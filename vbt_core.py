@@ -23,6 +23,7 @@ class TrainingDatabase:
         self.current_session_id = None
         self.current_set_id = None
         self.current_exercise_id = None
+        self.current_rep_index = 1  # Rep counter for current set
     
     def _init_db(self):
         """テーブル作成"""
@@ -191,6 +192,7 @@ class TrainingDatabase:
         ''', (self.current_session_id, ex_id, set_index, weight, target_reps, set_type))
         
         self.current_set_id = cursor.lastrowid
+        self.current_rep_index = 1  # Reset rep counter for new set
         conn.commit()
         conn.close()
         return self.current_set_id
@@ -213,28 +215,37 @@ class TrainingDatabase:
         conn.close()
 
     # --- Rep Management ---
-
-    def add_rep(self, velocity: float, power: float, peak_power: float, rom: float, time_to_peak: float, data_source: str = 'vbt'):
+    
+    def add_rep(self, velocity: float, power: float, peak_power: float, rom: float, time_to_peak: float, 
+                rep_duration: float = None, data_source: str = 'vbt'):
+        """レップデータを追加"""
         if not self.current_set_id:
-            return
-
+            raise ValueError("No active set. Call start_set() first.")
+        
         conn = sqlite3.connect(self.db_file)
         cursor = conn.cursor()
         
-        cursor.execute("SELECT COUNT(*) FROM reps WHERE set_id = ?", (self.current_set_id,))
-        rep_count = cursor.fetchone()[0]
-        rep_index = rep_count + 1
-        
         cursor.execute('''
             INSERT INTO reps (
-                set_id, rep_index, mean_velocity, mean_power, peak_power, rom, time_to_peak, data_source
-            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?)
-        ''', (self.current_set_id, rep_index, velocity, power, peak_power, rom, time_to_peak, data_source))
+                set_id, rep_index, 
+                mean_velocity, mean_power, peak_power, 
+                rom, time_to_peak, rep_duration,
+                data_source
+            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+        ''', (
+            self.current_set_id, 
+            self.current_rep_index,
+            velocity, power, peak_power,
+            rom, time_to_peak, rep_duration,
+            data_source
+        ))
         
-        cursor.execute("UPDATE sets SET actual_reps = ? WHERE id = ?", (rep_index, self.current_set_id))
+        # Update actual_reps in the sets table
+        cursor.execute("UPDATE sets SET actual_reps = ? WHERE id = ?", (self.current_rep_index, self.current_set_id))
         
         conn.commit()
         conn.close()
+        self.current_rep_index += 1
 
     # --- Data Retrieval ---
 

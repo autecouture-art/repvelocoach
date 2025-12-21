@@ -349,6 +349,10 @@ class VBTApp(ctk.CTk):
         self.current_e1rm = None
         self.body_weight = None
         self.readiness = 5
+        
+        # Set totals tracking (for rep log display)
+        self.current_set_volume = 0.0
+        self.current_set_tut = 0.0
 
     def show_session_setup(self):
         dialog = SessionSetupDialog(self, self.on_session_setup_complete)
@@ -505,8 +509,9 @@ class VBTApp(ctk.CTk):
 
     def _setup_monitor_tab(self):
         self.tab_monitor.grid_columnconfigure(0, weight=1)
-        self.tab_monitor.grid_rowconfigure(0, weight=3)
-        self.tab_monitor.grid_rowconfigure(1, weight=1)
+        self.tab_monitor.grid_rowconfigure(0, weight=3)  # Velocity display
+        self.tab_monitor.grid_rowconfigure(1, weight=1)  # Stats
+        self.tab_monitor.grid_rowconfigure(2, weight=1)  # Rep log (NEW)
 
         self.monitor_frame = ctk.CTkFrame(self.tab_monitor, fg_color="#1a1a1a")
         self.monitor_frame.grid(row=0, column=0, sticky="nsew", padx=0, pady=0)
@@ -558,6 +563,98 @@ class VBTApp(ctk.CTk):
         ctk.CTkLabel(f4, text="Est. 1RM").pack(pady=(5,0))
         self.e1rm_label = ctk.CTkLabel(f4, text="---", font=ctk.CTkFont(size=24, weight="bold"), text_color="#3498db")
         self.e1rm_label.pack(pady=5)
+        
+        # Rep Log Area (NEW)
+        self.rep_log_frame = ctk.CTkFrame(self.tab_monitor)
+        self.rep_log_frame.grid(row=2, column=0, sticky="nsew", padx=10, pady=(0, 10))
+        
+        ctk.CTkLabel(self.rep_log_frame, text="Current Set - Rep by Rep", 
+                     font=ctk.CTkFont(size=14, weight="bold")).pack(anchor="w", padx=5, pady=2)
+        
+        # Scrollable textbox for rep log
+        self.rep_log_text = ctk.CTkTextbox(self.rep_log_frame, 
+                                           font=("Courier", 11), 
+                                           height=100)
+        self.rep_log_text.pack(fill="both", expand=True, padx=5, pady=(0, 5))
+        self.rep_log_text.configure(state="disabled")
+        
+        # Initialize with header
+        self._update_rep_log_header()
+    
+    def _update_rep_log_header(self):
+        """Update rep log with header"""
+        # Reset set totals
+        self.current_set_volume = 0.0
+        self.current_set_tut = 0.0
+        
+        self.rep_log_text.configure(state="normal")
+        self.rep_log_text.delete("1.0", "end")
+        header = f"{'#':<3} {'Vel':<6} {'Power':<7} {'ROM':<6} {'TUT':<6} {'Change':>8}\n"
+        header += "─" * 48 + "\n"
+        self.rep_log_text.insert("end", header)
+        self.rep_log_text.configure(state="disabled")
+    
+    def _add_rep_to_log(self, velocity, power, rom, tut):
+        """Add a rep entry to the log"""
+        rep_count = self.v_loss_manager.current_set_reps
+        
+        # Calculate change percentage
+        if rep_count > 1:
+            baseline = self.v_loss_manager.best_velocity
+            change_pct = ((velocity - baseline) / baseline) * 100 if baseline > 0 else 0
+            arrow = "↓" if change_pct < -5 else ("↑" if change_pct > 5 else "→")
+            change_display = f"{arrow}{abs(change_pct):.0f}%"
+        else:
+            change_display = "baseline"
+        
+        # Format log line
+        log_line = f"{rep_count:<3} {velocity:<6.2f} {power:<7}W {rom:<6.1f} {tut:<6.2f}s {change_display:>8}\n"
+        
+        # Add to textbox
+        self.rep_log_text.configure(state="normal")
+        self.rep_log_text.insert("end", log_line)
+        self.rep_log_text.see("end")  # Auto-scroll to bottom
+        self.rep_log_text.configure(state="disabled")
+        
+        # Update set totals
+        weight = self.current_weight.get()
+        self.current_set_volume += weight
+        self.current_set_tut += tut
+        
+        # Update footer with totals
+        self._update_rep_log_footer()
+    
+    def _update_rep_log_footer(self):
+        """Update total volume and TUT footer in rep log"""
+        weight = self.current_weight.get()
+        reps = self.v_loss_manager.current_set_reps
+        
+        self.rep_log_text.configure(state="normal")
+        
+        # Get all lines
+        content = self.rep_log_text.get("1.0", "end")
+        lines = content.rstrip('\n').split("\n")
+        
+        # Remove old footer if exists (last 2-3 lines)
+        # Look for footer separator (─) or Total: line
+        while len(lines) > 3:
+            if lines[-1].startswith("Total:") or lines[-1].startswith("─"):
+                lines.pop()
+            elif lines[-2].startswith("─") or lines[-2].startswith("Total:"):
+                lines.pop()
+            else:
+                break
+        
+        # Rebuild content without footer
+        self.rep_log_text.delete("1.0", "end")
+        self.rep_log_text.insert("1.0", "\n".join(lines) + "\n")
+        
+        # Add new footer
+        footer = "─" * 48 + "\n"
+        footer += f"Total: {self.current_set_volume:.0f}kg ({weight}kg x {reps} reps) | TUT: {self.current_set_tut:.2f}s\n"
+        self.rep_log_text.insert("end", footer)
+        
+        self.rep_log_text.configure(state="disabled")
 
     def _setup_graph_tab(self):
         self.tab_graph.grid_columnconfigure(0, weight=1)
@@ -728,20 +825,40 @@ class VBTApp(ctk.CTk):
             self.status_message.set("No LVP data yet. Train more to get recommendations!")
 
     def start_new_set(self):
-        ex = self.current_exercise.get()
+        exercise = self.current_exercise.get()
         weight = self.current_weight.get()
-        stype = self.set_type.get()
+        set_type = self.set_type.get()
         
-        set_id = self.db.start_set(ex, weight, set_type=stype)
+        if not exercise or weight <= 0:
+            import tkinter.messagebox as msgbox
+            msgbox.showwarning("Input Error", "Please enter valid exercise and weight")
+            return
+        
+        self.db.start_set(exercise, weight, set_type)
         self.v_loss_manager.start_new_set()
-        
         self.reset_monitor_display()
+        
+        # Reset rep log
+        self._update_rep_log_header()
+        
+        self.status_message.set(f"Started: {exercise} @ {weight}kg ({set_type})")
+        self.audio.speak(f"セット開始 {weight} キロ")
+        
+        if set_type == "drop":
+            self.audio.speak("ドロップセット")
+        
+        # Assuming self.set_type_normal is a CTkBooleanVar or similar
+        # This part of the provided diff seems to be incomplete or from a different context
+        # The original code had:
+        # self.new_set_btn.configure(fg_color="gray", state="disabled")
+        # self.manual_btn.configure(state="normal")
+        # self.finish_set_btn.configure(fg_color="#e67e22", state="normal")
+        # I will keep the original button states as the provided diff's button logic is incomplete.
         self.new_set_btn.configure(fg_color="gray", state="disabled")
         self.manual_btn.configure(state="normal")
         self.finish_set_btn.configure(fg_color="#e67e22", state="normal")
         
-        self.status_message.set(f"Set Started: {ex} {weight}kg ({stype})")
-        self.audio.speak("セット開始")
+        self.update_1rm_display()
 
     def finish_current_set(self):
         ex = self.current_exercise.get()
@@ -986,6 +1103,12 @@ class VBTApp(ctk.CTk):
 
         if not self.db.current_set_id:
             self.start_new_set()
+        
+        # Calculate TUT (Time Under Tension)
+        # Using time_to_peak as concentric time estimate
+        tut_concentric = data.time_to_peak_s
+        # Simple TUT = concentric time (can be enhanced later with eccentric estimation)
+        tut_rep = tut_concentric
             
         self.db.add_rep(
             velocity=data.avg_velocity_ms,
@@ -993,7 +1116,16 @@ class VBTApp(ctk.CTk):
             peak_power=data.peak_power_w,
             rom=data.rom_cm,
             time_to_peak=data.time_to_peak_s,
+            rep_duration=tut_rep,  # TUT added
             data_source='vbt'
+        )
+        
+        # Add to rep log
+        self._add_rep_to_log(
+            velocity=data.avg_velocity_ms,
+            power=data.avg_power_w,
+            rom=data.rom_cm,
+            tut=tut_rep
         )
         
         ex_id = self.db.current_exercise_id
