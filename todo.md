@@ -322,3 +322,7 @@
   - [x] テスター指示送信
 - [x] FINAL_DEPLOYMENT_GUIDE.md 作成
 - [x] 実行準備完了チェックリスト完成
+- [x] 自動化スクリプト作成（App Store、Manus、TestFlight）
+- [x] マスタースクリプト作成（run-deployment.sh）
+- [x] DEPLOYMENT_START.md 作成
+- [x] 【実行准備完了】 すべてのドキュメント、スクリプト、アセット完成
