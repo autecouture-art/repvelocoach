@@ -255,3 +255,46 @@
 - [ ] 技術スコア算出
 - [ ] 音声入力コマンド
 - [ ] 動画記録機能
+
+
+### Manus ビルド手順
+- [ ] MANUS_BUILD_GUIDE.md を確認
+- [ ] Manus UI（https://app.manus.im）にログイン
+- [ ] OVR VBT Coach プロジェクトを選択
+- [ ] Management UI で Secrets を確認
+- [ ] 「Publish」→「Build for iOS」をクリック
+- [ ] ビルド設定を入力（TestFlight デプロイ設定）
+- [ ] 「Start Build」をクリック
+- [ ] ビルド進捗を監視（30～60 分）
+- [ ] ビルド完了メール受信
+- [ ] IPA ファイルが App Store Connect にアップロード
+
+### App Store Connect セットアップ
+- [ ] APP_STORE_CONNECT_SETUP.md を確認
+- [ ] Apple Developer アカウントで App Store Connect にログイン
+- [ ] 新しいアプリを登録（Bundle ID: space.manus.ovr.vbt.coach.app.t20260125053732）
+- [ ] アプリ情報を入力（名前、説明、カテゴリ）
+- [ ] スクリーンショット（最低 2 枚）を追加
+- [ ] App Preview ビデオを追加（オプション）
+- [ ] プライバシーポリシー URL を設定
+- [ ] サポート URL を設定
+- [ ] 年齢レーティングを設定
+
+### TestFlight テスト
+- [ ] Internal Testers グループを作成
+- [ ] テスターのメールアドレスを追加
+- [ ] ビルドを Internal Testers に追加
+- [ ] テスター招待メール送信
+- [ ] テスターが TestFlight アプリをダウンロード
+- [ ] テスターが OVR VBT Coach をインストール
+- [ ] 主要機能テスト実施（BLE、セッション記録、PR 検知）
+- [ ] バグ報告を確認
+- [ ] バグ修正と新ビルド提出
+
+### App Store リリース準備
+- [ ] すべてのテストが完了
+- [ ] すべてのバグが修正
+- [ ] リリースノートを作成
+- [ ] 「Submit for Review」をクリック
+- [ ] Apple レビュー待機（24～48 時間）
+- [ ] App Store リリース
