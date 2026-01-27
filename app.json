@@ -24,7 +24,10 @@
         "NSMicrophoneUsageDescription": "This app uses the microphone for voice commands during your workouts.",
         "NSPhotoLibraryUsageDescription": "This app saves workout videos to your photo library."
       },
-      "buildNumber": "1"
+      "buildNumber": "1",
+      "entitlements": {
+        "aps-environment": "development"
+      }
     },
     "android": {
       "adaptiveIcon": {
