@@ -64,6 +64,7 @@ const config: ExpoConfig = {
     predictiveBackGestureEnabled: false,
     package: env.androidPackage,
     permissions: [
+      "POST_NOTIFICATIONS",
       "BLUETOOTH",
       "BLUETOOTH_ADMIN",
       "BLUETOOTH_SCAN",
