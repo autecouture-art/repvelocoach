@@ -20,7 +20,8 @@
     "production": {
       "ios": {
         "buildConfiguration": "Release",
-        "credentialsSource": "remote"
+        "credentialsSource": "remote",
+        "autoIncrement": false
       }
     }
   },
@@ -28,7 +29,6 @@
     "production": {
       "ios": {
         "appleId": "autecouture@gmail.com",
-        "ascAppId": "placeholder",
         "appleTeamId": "NN9FMT4BC9"
       }
     }

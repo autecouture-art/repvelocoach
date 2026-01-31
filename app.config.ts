@@ -2,21 +2,17 @@
 import "./scripts/load-env.js";
 import type { ExpoConfig } from "expo/config";
 
-// Bundle ID format: space.manus.<project_name_dots>.<timestamp>
-// e.g., "my-app" created at 2024-01-15 10:30:45 -> "space.manus.my.app.t20240115103045"
-// Bundle ID can only contain letters, numbers, and dots
-// Android requires each dot-separated segment to start with a letter
+// Bundle ID format: com.autecouture.<project_name_dots>
 const bundleId = "com.autecouture.ovrvbtcoach";
-// Extract timestamp from bundle ID and prefix with "manus" for deep link scheme
-// e.g., "space.manus.my.app.t20240115103045" -> "manus20240115103045"
+// Extract timestamp from bundle ID for deep link scheme if present, otherwise use default
 const timestamp = bundleId.split(".").pop()?.replace(/^t/, "") ?? "";
-const schemeFromBundleId = `manus${timestamp}`;
+const schemeFromBundleId = `ovrvbtcoach${timestamp}`;
 
 const env = {
   // App branding - update these values directly (do not use env vars)
   appName: "OVR VBT Coach",
   appSlug: "ovr-vbt-coach-app",
-  // S3 URL of the app logo - set this to the URL returned by generate_image when creating custom logo
+  // URL of the app logo
   // Leave empty to use the default icon from assets/images/icon.png
   logoUrl: "https://s3.amazonaws.com/manus-assets/ovr-vbt-coach/icon.png",
   scheme: schemeFromBundleId,
