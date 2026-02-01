@@ -455,17 +455,15 @@ class BLEService {
   }
 
   /**
-  /**
-   * Parse velocity data from byte array
-   * Protocol Analysis:
-   * Data seems to be 8x UInt16 values (Little Endian)
-   * 0-1: Mean Velocity (cm/s)
-   * 2-3: Mean Power (W)
-   * 4-5: Peak Power (W) ?
-   * 6-7: Peak Velocity (cm/s) ?
-   * 8-9: ROM (mm)
-   * 14-15: Duration (ms)
-   */
+  * Parse velocity data from byte array
+  * OVR Velocity Protocol (Corrected):
+  * Position 0-1: Peak Velocity (cm/s) ÷ 100 → m/s
+  * Position 2-3: Mean Power (W)
+  * Position 4-5: Peak Power (W)
+  * Position 6-7: Mean Velocity (cm/s) ÷ 266 → m/s
+  * Position 8-9: ROM (mm) ÷ 10 → cm
+  * Position 14-15: Rep Duration (ms)
+  */
   private parseVelocityData(bytes: Uint8Array): OVRData | null {
     try {
       if (bytes.length < 16) {
@@ -473,28 +471,24 @@ class BLEService {
         return null;
       }
 
-      // Try parsing as Integers first (New Protocol)
-      const mean_v_int = readUInt16LE(bytes, 0); // cm/s
-      const mean_p_int = readUInt16LE(bytes, 2); // W
-      const peak_p_int = readUInt16LE(bytes, 4); // W?
-      const peak_v_int = readUInt16LE(bytes, 6); // cm/s?
-      const rom_int = readUInt16LE(bytes, 8); // mm
+      // Parse all UInt16 values
+      const peak_v_raw = readUInt16LE(bytes, 0);  // cm/s
+      const mean_p_raw = readUInt16LE(bytes, 2);  // W
+      const peak_p_raw = readUInt16LE(bytes, 4);  // W
+      const mean_v_raw = readUInt16LE(bytes, 6);  // cm/s
+      const rom_raw = readUInt16LE(bytes, 8);    // mm
+      const dummy_1 = readUInt16LE(bytes, 10);
+      const dummy_2 = readUInt16LE(bytes, 12);
+      const duration_raw = readUInt16LE(bytes, 14); // ms
 
-      // Offset 12 or 14 for Duration?
-      // Log data: 19 00 (25) at 12, 75 04 (1141) at 14. 
-      // 1141ms is reasonable for rep duration.
-      const duration_int = readUInt16LE(bytes, 14); // ms
+      // Convert with correct scaling
+      const peak_velocity = peak_v_raw / 100.0;  // cm/s → m/s
+      const mean_velocity = mean_v_raw / 266.0;  // scaled cm/s → m/s
+      const rom_cm = rom_raw / 10.0;              // mm → cm
+      const rep_duration_ms = duration_raw;
 
-      // Verify if values make sense as Integers
-      // If Mean V is huge (> 10m/s = 1000 cm/s), it might be wrong or Float.
-      // But Float parsing yielded 0.00.
-
-      const mean_velocity = mean_v_int / 100.0; // cm/s -> m/s
-      const peak_velocity = peak_v_int / 100.0; // cm/s -> m/s
-      const rom_cm = rom_int / 10.0; // mm -> cm
-      const rep_duration_ms = duration_int;
-
-      this.debug(`Parsed (Int): V=${mean_velocity.toFixed(2)} P=${mean_p_int} ROM=${rom_cm.toFixed(1)} T=${rep_duration_ms}`);
+      // Debug: show all raw values
+      this.debug(`Raw: pv=${peak_v_raw} mv=${mean_v_raw} rom=${rom_raw} t=${duration_raw}`);
 
       return {
         mean_velocity,
@@ -502,7 +496,6 @@ class BLEService {
         rom_cm,
         rep_duration_ms,
         timestamp: Date.now(),
-        // Add power if interface allows (OVRData might need update, but stick to interface for now)
       };
     } catch (error) {
       this.debug(`Error parsing velocity data: ${error}`);
