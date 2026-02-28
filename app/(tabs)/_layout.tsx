@@ -28,12 +28,50 @@ export default function TabLayout() {
         },
       }}
     >
+      {/* ホームタブ */}
       <Tabs.Screen
         name="index"
         options={{
-          title: "Home",
+          title: "ホーム",
           tabBarIcon: ({ color }) => <IconSymbol size={28} name="house.fill" color={color} />,
         }}
+      />
+      {/* VBTセッションタブ */}
+      <Tabs.Screen
+        name="session"
+        options={{
+          title: "セッション",
+          tabBarIcon: ({ color }) => <IconSymbol size={28} name="bolt.fill" color={color} />,
+        }}
+      />
+      {/* LVPグラフタブ */}
+      <Tabs.Screen
+        name="graph"
+        options={{
+          title: "グラフ",
+          tabBarIcon: ({ color }) => <IconSymbol size={28} name="chart.xyaxis.line" color={color} />,
+        }}
+      />
+      {/* 手動入力タブ */}
+      <Tabs.Screen
+        name="manual"
+        options={{
+          title: "手動入力",
+          tabBarIcon: ({ color }) => <IconSymbol size={28} name="pencil" color={color} />,
+        }}
+      />
+      {/* 履歴タブ */}
+      <Tabs.Screen
+        name="history"
+        options={{
+          title: "履歴",
+          tabBarIcon: ({ color }) => <IconSymbol size={28} name="clock.fill" color={color} />,
+        }}
+      />
+      {/* セッション詳細はタブバーに表示しない（ルーティングのみ） */}
+      <Tabs.Screen
+        name="session-detail"
+        options={{ href: null }}
       />
     </Tabs>
   );

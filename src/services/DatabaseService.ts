@@ -412,7 +412,131 @@ class DatabaseService {
   }
 
   /**
-   * Close database connection
+   * セッションのお気に入りコメントを更新
+   */
+  async updateSessionNotes(sessionId: string, notes: string): Promise<void> {
+    if (!this.db) return;
+    await this.db.runAsync(
+      'UPDATE sessions SET notes = ? WHERE session_id = ?',
+      [notes, sessionId]
+    );
+  }
+
+  /**
+   * セッションを削除（関連するset/repも全削除）
+   */
+  async deleteSession(sessionId: string): Promise<void> {
+    if (!this.db) return;
+    // 関連データを先に削除
+    await this.db.runAsync('DELETE FROM reps WHERE session_id = ?', [sessionId]);
+    await this.db.runAsync('DELETE FROM sets WHERE session_id = ?', [sessionId]);
+    await this.db.runAsync('DELETE FROM sessions WHERE session_id = ?', [sessionId]);
+  }
+
+  /**
+   * セットを削除（関連するrepも全削除）
+   */
+  async deleteSet(sessionId: string, setIndex: number, lift: string): Promise<void> {
+    if (!this.db) return;
+    await this.db.runAsync(
+      'DELETE FROM reps WHERE session_id = ? AND set_index = ? AND lift = ?',
+      [sessionId, setIndex, lift]
+    );
+    await this.db.runAsync(
+      'DELETE FROM sets WHERE session_id = ? AND set_index = ? AND lift = ?',
+      [sessionId, setIndex, lift]
+    );
+  }
+
+  /**
+   * セットのメモを更新
+   */
+  async updateSetNotes(sessionId: string, setIndex: number, notes: string): Promise<void> {
+    if (!this.db) return;
+    await this.db.runAsync(
+      'UPDATE sets SET notes = ? WHERE session_id = ? AND set_index = ?',
+      [notes, sessionId, setIndex]
+    );
+  }
+
+  /**
+   * セットの負荷とRPEを更新
+   */
+  async updateSet(sessionId: string, setIndex: number, updates: { load_kg?: number; rpe?: number; notes?: string }): Promise<void> {
+    if (!this.db) return;
+    const parts: string[] = [];
+    const values: any[] = [];
+    if (updates.load_kg !== undefined) { parts.push('load_kg = ?'); values.push(updates.load_kg); }
+    if (updates.rpe !== undefined) { parts.push('rpe = ?'); values.push(updates.rpe); }
+    if (updates.notes !== undefined) { parts.push('notes = ?'); values.push(updates.notes); }
+    if (parts.length === 0) return;
+    values.push(sessionId, setIndex);
+    await this.db.runAsync(
+      `UPDATE sets SET ${parts.join(', ')} WHERE session_id = ? AND set_index = ?`,
+      values
+    );
+  }
+
+  /**
+   * セッション内の全セットのボリュームを集計して更新
+   */
+  async recalcSessionVolume(sessionId: string): Promise<void> {
+    if (!this.db) return;
+    const sets = await this.getSetsForSession(sessionId);
+    const totalVolume = sets.reduce((sum, s) => sum + s.load_kg * s.reps, 0);
+    const totalSets = sets.length;
+    await this.db.runAsync(
+      'UPDATE sessions SET total_volume = ?, total_sets = ? WHERE session_id = ?',
+      [totalVolume, totalSets, sessionId]
+    );
+  }
+
+  /**
+   * データ検索（キーワード・種目フィルター）
+   */
+  async searchSessions(query?: string, lift?: string): Promise<SessionData[]> {
+    if (!this.db) return [];
+    if (lift) {
+      const setRows = (await this.db.getAllAsync(
+        'SELECT DISTINCT session_id FROM sets WHERE lift = ? ORDER BY timestamp DESC',
+        [lift]
+      )) as { session_id: string }[];
+      const sessions: SessionData[] = [];
+      for (const row of setRows) {
+        const s = await this.getSession(row.session_id);
+        if (s) sessions.push(s);
+      }
+      return sessions;
+    }
+    if (query) {
+      return (await this.db.getAllAsync(
+        'SELECT * FROM sessions WHERE notes LIKE ? ORDER BY date DESC',
+        [`%${query}%`]
+      )) as SessionData[];
+    }
+    return this.getSessions();
+  }
+
+  /**
+   * 週間集計を返す（過去4週間）
+   */
+  async getWeeklyStats(): Promise<{ week: string; volume: number; sets: number }[]> {
+    if (!this.db) return [];
+    const results = (await this.db.getAllAsync(`
+      SELECT
+        strftime('%Y-W%W', date) as week,
+        SUM(total_volume) as volume,
+        SUM(total_sets) as sets
+      FROM sessions
+      GROUP BY week
+      ORDER BY week DESC
+      LIMIT 8
+    `)) as { week: string; volume: number; sets: number }[];
+    return results;
+  }
+
+  /**
+   * Database connectionを閉じる
    */
   async close(): Promise<void> {
     if (this.db) {
