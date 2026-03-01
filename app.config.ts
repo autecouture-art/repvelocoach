@@ -32,7 +32,7 @@ const config: ExpoConfig = {
   ios: {
     supportsTablet: true,
     bundleIdentifier: env.iosBundleId,
-    buildNumber: "12",
+    buildNumber: "13",
     infoPlist: {
       ITSAppUsesNonExemptEncryption: false,
       NSBluetoothAlwaysUsageDescription:

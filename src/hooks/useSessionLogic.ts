@@ -143,18 +143,13 @@ export const useSessionLogic = (onPRDetected?: PRCallback) => {
       // Cleanup callbacks? (Optional if singleton persists)
     };
   }, [handleDataReceived, handleConnectionChanged, setConnectionStatus]);
-
-  // --- Heart Rate Monitoring ---
+  // --- Heart Rate Monitoring (Polling when Active) ---
   useEffect(() => {
     let hrTimerId: any = null;
 
-    if (isSessionActive) {
-      HealthService.authorize().then(authorized => {
-        if (authorized && isMounted.current) {
-          hrTimerId = HealthService.startHeartRateMonitoring((bpm) => {
-            if (isMounted.current) updateHeartRate(bpm);
-          });
-        }
+    if (isSessionActive && isMounted.current) {
+      hrTimerId = HealthService.startHeartRateMonitoring((bpm) => {
+        if (isMounted.current) updateHeartRate(bpm);
       });
     }
 
@@ -162,6 +157,15 @@ export const useSessionLogic = (onPRDetected?: PRCallback) => {
       if (hrTimerId) HealthService.stopHeartRateMonitoring(hrTimerId);
     };
   }, [isSessionActive, updateHeartRate]);
+
+  // --- HealthKit Authorization (On Mount) ---
+  useEffect(() => {
+    if (isMounted.current) {
+      HealthService.authorize().then(authorized => {
+        console.log('[useSessionLogic] HealthKit initial authorization:', authorized);
+      });
+    }
+  }, []);
 
   // --- Rest Timing & Ready Notification ---
   useEffect(() => {

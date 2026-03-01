@@ -14,6 +14,7 @@ import {
   TextInput,
   Alert,
 } from 'react-native';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useRouter } from 'expo-router';
 import { useTrainingStore } from '@/src/store/trainingStore';
 import { useSessionLogic } from '@/src/hooks/useSessionLogic';
@@ -26,6 +27,7 @@ import type { Exercise, PRRecord } from '@/src/types/index';
 
 export default function SessionScreen() {
   const router = useRouter();
+  const insets = useSafeAreaInsets();
 
   // PR検知時のモーダル状態
   const [prRecord, setPRRecord] = useState<PRRecord | null>(null);
@@ -174,7 +176,7 @@ export default function SessionScreen() {
 
   return (
     <ScrollView style={styles.container}>
-      <View style={styles.header}>
+      <View style={[styles.header, { paddingTop: insets.top || 16 }]}>
         <TouchableOpacity onPress={() => router.back()} style={styles.backButton}>
           <Text style={styles.backButtonText}>← 戻る</Text>
         </TouchableOpacity>
