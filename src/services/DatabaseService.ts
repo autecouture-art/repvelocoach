@@ -361,6 +361,20 @@ class DatabaseService {
   }
 
   /**
+   * Get all reps for a session
+   */
+  async getRepsForSession(sessionId: string): Promise<RepData[]> {
+    if (!this.db) return [];
+
+    const results = await (this.db.getAllAsync(
+      'SELECT * FROM reps WHERE session_id = ? ORDER BY lift, set_index, rep_index',
+      [sessionId]
+    ) as Promise<RepData[]>);
+
+    return results;
+  }
+
+  /**
    * Get best PR for an exercise
    */
   async getBestPR(lift: string, type: string): Promise<PRRecord | null> {

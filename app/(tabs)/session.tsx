@@ -21,6 +21,7 @@ import { ExerciseSelectModal } from '@/src/components/ExerciseSelectModal';
 import PRNotification from '@/src/components/PRNotification';
 import DatabaseService from '@/src/services/DatabaseService';
 import AICoachService from '@/src/services/AICoachService';
+import { calculateWarmupSteps, isBig3 } from '@/src/utils/WarmupLogic';
 import type { Exercise, PRRecord } from '@/src/types/index';
 
 export default function SessionScreen() {
@@ -49,6 +50,8 @@ export default function SessionScreen() {
     isSessionActive,
     sessionStartTime,
     updateLoad,
+    targetWeight,
+    setTargetWeight,
     setCurrentExercise,
     startSession,
     endSession,
@@ -56,11 +59,20 @@ export default function SessionScreen() {
 
   const [showExerciseModal, setShowExerciseModal] = useState(false);
   const [inputLoad, setInputLoad] = useState('');
+  const [inputTargetWeight, setInputTargetWeight] = useState('');
 
   // Sync input with store
   useEffect(() => {
     setInputLoad(currentLoad.toString());
   }, [currentLoad]);
+
+  useEffect(() => {
+    if (targetWeight !== null) {
+      setInputTargetWeight(targetWeight.toString());
+    } else {
+      setInputTargetWeight('');
+    }
+  }, [targetWeight]);
 
   const handleLoadChange = (text: string) => {
     setInputLoad(text);
@@ -70,6 +82,13 @@ export default function SessionScreen() {
 
   const handleExerciseSelect = (exercise: Exercise) => {
     setCurrentExercise(exercise);
+  };
+
+  const handleTargetWeightChange = (text: string) => {
+    setInputTargetWeight(text);
+    const val = parseFloat(text);
+    if (!isNaN(val)) setTargetWeight(val);
+    else setTargetWeight(null);
   };
 
   // セッション開始処理
@@ -220,6 +239,53 @@ export default function SessionScreen() {
           </TouchableOpacity>
         )}
       </View>
+
+      {/* Target Weight Input (Big 3 Only) */}
+      {isBig3(currentExercise?.category) && isSessionActive && (
+        <View style={styles.targetWeightCard}>
+          <Text style={styles.targetWeightLabel}>今日の目標重量 (Top Set)</Text>
+          <View style={styles.targetInputRow}>
+            <TextInput
+              style={styles.targetInput}
+              value={inputTargetWeight}
+              onChangeText={handleTargetWeightChange}
+              placeholder="最高重量を入力"
+              placeholderTextColor="#666"
+              keyboardType="numeric"
+            />
+            <Text style={styles.unitText}>kg</Text>
+          </View>
+        </View>
+      )}
+
+      {/* Warmup Guide */}
+      {isBig3(currentExercise?.category) && targetWeight && isSessionActive && (
+        <View style={styles.section}>
+          <Text style={styles.sectionTitle}>Warmup Guide</Text>
+          <ScrollView horizontal showsHorizontalScrollIndicator={false} style={styles.warmupScroll}>
+            {calculateWarmupSteps(targetWeight).map((step, idx) => {
+              const isCurrent = currentLoad === step.load_kg;
+              return (
+                <TouchableOpacity
+                  key={idx}
+                  style={[styles.warmupStep, isCurrent && styles.warmupStepActive]}
+                  onPress={() => handleLoadChange(step.load_kg.toString())}
+                >
+                  <Text style={[styles.warmupStepLabel, isCurrent && styles.warmupStepLabelActive]}>
+                    {step.label}
+                  </Text>
+                  <Text style={[styles.warmupWeight, isCurrent && styles.warmupWeightActive]}>
+                    {step.load_kg}kg
+                  </Text>
+                  <Text style={[styles.warmupReps, isCurrent && styles.warmupRepsActive]}>
+                    {step.reps > 0 ? `${step.reps} reps` : 'Main'}
+                  </Text>
+                </TouchableOpacity>
+              );
+            })}
+          </ScrollView>
+        </View>
+      )}
 
       {/* Set Configuration */}
       <View style={styles.section}>
@@ -641,6 +707,30 @@ const styles = StyleSheet.create({
     borderWidth: 1, borderColor: '#2196F3',
   },
   coachNavButtonText: { color: '#2196F3', fontSize: 14, fontWeight: '600' },
+  // Target Weight & Warmup UI
+  targetWeightCard: {
+    marginHorizontal: 16, marginBottom: 16, padding: 16,
+    backgroundColor: '#2a2a2a', borderRadius: 12, borderWidth: 1, borderColor: '#444',
+  },
+  targetWeightLabel: { fontSize: 13, color: '#2196F3', fontWeight: 'bold', marginBottom: 10 },
+  targetInputRow: { flexDirection: 'row', alignItems: 'center', gap: 12 },
+  targetInput: {
+    flex: 1, backgroundColor: '#1a1a1a', borderRadius: 8, padding: 12,
+    color: '#fff', fontSize: 18, fontWeight: 'bold', borderWidth: 1, borderColor: '#333'
+  },
+  unitText: { color: '#999', fontSize: 16 },
+  warmupScroll: { marginTop: 4, paddingBottom: 8 },
+  warmupStep: {
+    backgroundColor: '#2a2a2a', borderRadius: 10, padding: 12,
+    marginRight: 10, minWidth: 85, alignItems: 'center', borderWidth: 1, borderColor: '#333'
+  },
+  warmupStepActive: { backgroundColor: '#1a1a1a', borderColor: '#2196F3', borderWidth: 2 },
+  warmupStepLabel: { fontSize: 10, color: '#999', marginBottom: 4 },
+  warmupStepLabelActive: { color: '#2196F3', fontWeight: 'bold' },
+  warmupWeight: { fontSize: 16, fontWeight: 'bold', color: '#fff' },
+  warmupWeightActive: { color: '#2196F3' },
+  warmupReps: { fontSize: 10, color: '#666', marginTop: 2 },
+  warmupRepsActive: { color: '#999' },
 });
 
 

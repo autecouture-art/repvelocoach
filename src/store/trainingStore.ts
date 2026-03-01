@@ -27,6 +27,7 @@ interface TrainingState {
   currentLift: string | null;
   currentLoad: number;
   currentReps: number;
+  targetWeight: number | null; // 今日の目標（トップセット）重量
   setHistory: SetData[];
 
   // Live Data State
@@ -46,6 +47,7 @@ interface TrainingState {
   addRep: (rep: RepData) => void;
   completeSet: (setData: SetData) => void;
   updateLoad: (load: number) => void;
+  setTargetWeight: (weight: number | null) => void;
   setCurrentExercise: (exercise: Exercise) => void;
   resetSetData: () => void;
 }
@@ -60,6 +62,7 @@ export const useTrainingStore = create<TrainingState>((set, get) => ({
   currentLift: null,
   currentLoad: 0,
   currentReps: 5,
+  targetWeight: null,
   setHistory: [],
 
   isConnected: false,
@@ -92,6 +95,7 @@ export const useTrainingStore = create<TrainingState>((set, get) => ({
       setHistory: [],
       currentSetIndex: 1,
       repHistory: [],
+      targetWeight: null,
     });
   },
 
@@ -129,6 +133,10 @@ export const useTrainingStore = create<TrainingState>((set, get) => ({
 
   updateLoad: (load: number) => {
     set({ currentLoad: load });
+  },
+
+  setTargetWeight: (weight: number | null) => {
+    set({ targetWeight: weight });
   },
 
   setCurrentExercise: (exercise: Exercise) => {

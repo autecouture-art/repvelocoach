@@ -20,9 +20,11 @@ import {
     Platform,
 } from 'react-native';
 import { useLocalSearchParams, useRouter } from 'expo-router';
+import * as Clipboard from 'expo-clipboard';
 import DatabaseService from '@/src/services/DatabaseService';
 import AICoachService from '@/src/services/AICoachService';
-import type { SessionData, SetData } from '@/src/types/index';
+import { formatSessionForAI } from '@/src/utils/formatDataForAI';
+import type { SessionData, SetData, RepData } from '@/src/types/index';
 
 export default function SessionDetailScreen() {
     const router = useRouter();
@@ -127,7 +129,20 @@ export default function SessionDetailScreen() {
         setEditSetNotes(setData.notes || '');
     };
 
-    // --- セット編集を保存 ---
+    // --- セッションデータをAI用にコピー ---
+    const handleCopyToClipboard = async () => {
+        if (!session) return;
+        try {
+            const allReps = await DatabaseService.getRepsForSession(session.session_id);
+            const formattedText = formatSessionForAI(session, sets, allReps);
+            await Clipboard.setStringAsync(formattedText);
+            Alert.alert('コピー完了', 'AI相談用のデータをクリップボードにコピーしました。ChatGPT等に貼り付けて相談してください。');
+        } catch (error) {
+            console.error('コピー失敗:', error);
+            Alert.alert('エラー', 'データのコピーに失敗しました');
+        }
+    };
+
     const saveEditSet = async () => {
         if (!editingSet || !session) return;
         try {
@@ -184,9 +199,14 @@ export default function SessionDetailScreen() {
                     <Text style={styles.backText}>← 履歴</Text>
                 </TouchableOpacity>
                 <Text style={styles.title}>セッション詳細</Text>
-                <TouchableOpacity onPress={confirmDeleteSession} style={styles.deleteBtn}>
-                    <Text style={styles.deleteBtnText}>🗑️</Text>
-                </TouchableOpacity>
+                <View style={styles.headerRight}>
+                    <TouchableOpacity onPress={handleCopyToClipboard} style={styles.copyBtn}>
+                        <Text style={styles.copyBtnText}>AI相談</Text>
+                    </TouchableOpacity>
+                    <TouchableOpacity onPress={confirmDeleteSession} style={styles.deleteBtn}>
+                        <Text style={styles.deleteBtnText}>🗑️</Text>
+                    </TouchableOpacity>
+                </View>
             </View>
 
             <ScrollView>
@@ -406,6 +426,14 @@ const styles = StyleSheet.create({
     },
     backText: { color: '#2196F3', fontSize: 16 },
     title: { fontSize: 18, fontWeight: 'bold', color: '#fff' },
+    headerRight: { flexDirection: 'row', alignItems: 'center', gap: 12 },
+    copyBtn: {
+        backgroundColor: '#2196F3',
+        paddingHorizontal: 10,
+        paddingVertical: 4,
+        borderRadius: 12,
+    },
+    copyBtnText: { color: '#fff', fontSize: 12, fontWeight: 'bold' },
     deleteBtn: { padding: 6 },
     deleteBtnText: { fontSize: 22 },
     summaryCard: { margin: 16, padding: 20, backgroundColor: '#2a2a2a', borderRadius: 16 },

@@ -16,11 +16,13 @@ import {
     ActivityIndicator,
     Modal,
 } from 'react-native';
+import * as Clipboard from 'expo-clipboard';
 import { useRouter, useFocusEffect } from 'expo-router';
 import { format, parseISO, startOfWeek, endOfWeek, isWithinInterval } from 'date-fns';
 import { ja } from 'date-fns/locale';
 import DatabaseService from '@/src/services/DatabaseService';
 import AICoachService from '@/src/services/AICoachService';
+import { formatSessionForAI } from '@/src/utils/formatDataForAI';
 import type { SessionData } from '@/src/types/index';
 
 type FilterPeriod = 'all' | 'week' | 'month' | '3months';
@@ -131,6 +133,21 @@ export default function HistoryScreen() {
             pathname: '/(tabs)/session-detail',
             params: { session_id: session.session_id },
         } as any);
+    };
+
+    const handleCopyToClipboard = async (session: SessionData) => {
+        try {
+            const [sets, reps] = await Promise.all([
+                DatabaseService.getSetsForSession(session.session_id),
+                DatabaseService.getRepsForSession(session.session_id),
+            ]);
+            const formattedText = formatSessionForAI(session, sets, reps);
+            await Clipboard.setStringAsync(formattedText);
+            Alert.alert('コピー完了', `${session.date}のデータをクリップボードにコピーしました。`);
+        } catch (error) {
+            console.error('コピー失敗:', error);
+            Alert.alert('エラー', 'データのコピーに失敗しました');
+        }
     };
 
     const handleDeleteSession = (session: SessionData) => {
@@ -348,6 +365,12 @@ export default function HistoryScreen() {
                                                     )}
                                                 </View>
                                                 <View style={styles.sessionRight}>
+                                                    <TouchableOpacity
+                                                        style={styles.cardCopyBtn}
+                                                        onPress={() => handleCopyToClipboard(session)}
+                                                    >
+                                                        <Text style={styles.cardCopyBtnText}>AIコピー</Text>
+                                                    </TouchableOpacity>
                                                     <Text style={styles.sessionVolume}>{vol.toLocaleString()}</Text>
                                                     <Text style={styles.sessionVolumeUnit}>kg</Text>
                                                     <Text style={styles.sessionSets}>{session.total_sets}セット</Text>
@@ -533,6 +556,16 @@ const styles = StyleSheet.create({
     sessionVolume: { fontSize: 20, fontWeight: 'bold', color: '#4CAF50' },
     sessionVolumeUnit: { fontSize: 11, color: '#4CAF50', marginBottom: 4 },
     sessionSets: { fontSize: 12, color: '#999' },
+    cardCopyBtn: {
+        backgroundColor: '#333',
+        paddingHorizontal: 8,
+        paddingVertical: 3,
+        borderRadius: 8,
+        borderWidth: 1,
+        borderColor: '#444',
+        marginBottom: 8,
+    },
+    cardCopyBtnText: { color: '#2196F3', fontSize: 10, fontWeight: 'bold' },
     // フィルターモーダル
     modalOverlay: { flex: 1, backgroundColor: 'rgba(0,0,0,0.7)', justifyContent: 'flex-end' },
     filterModal: {

@@ -68,9 +68,21 @@ export default function TabLayout() {
           tabBarIcon: ({ color }) => <IconSymbol size={28} name="clock.fill" color={color} />,
         }}
       />
-      {/* セッション詳細はタブバーに表示しない（ルーティングのみ） */}
+      {/* 設定タブ */}
+      <Tabs.Screen
+        name="settings"
+        options={{
+          title: "設定",
+          tabBarIcon: ({ color }) => <IconSymbol size={28} name="gearshape.fill" color={color} />,
+        }}
+      />
+      {/* 詳細画面などはタブバーに表示しない */}
       <Tabs.Screen
         name="session-detail"
+        options={{ href: null }}
+      />
+      <Tabs.Screen
+        name="exercise-master"
         options={{ href: null }}
       />
     </Tabs>
