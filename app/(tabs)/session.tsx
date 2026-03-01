@@ -52,6 +52,9 @@ export default function SessionScreen() {
     updateLoad,
     targetWeight,
     setTargetWeight,
+    currentHeartRate,
+    restStartTime,
+    sessionHRPoints,
     setCurrentExercise,
     startSession,
     endSession,
@@ -144,6 +147,7 @@ export default function SessionScreen() {
         const durationMs = sessionStartTime ? Date.now() - sessionStartTime : 0;
         const durationMin = Math.round(durationMs / 60000);
         const lifts = [...new Set(setHistory.map(s => s.lift))];
+        const avgHr = sessionHRPoints.length > 0 ? sessionHRPoints.reduce((s, x) => s + x, 0) / sessionHRPoints.length : undefined;
 
         await DatabaseService.insertSession({
           session_id: currentSession.session_id + '_summary',
@@ -151,6 +155,10 @@ export default function SessionScreen() {
           total_volume: totalVolume,
           total_sets: setHistory.length,
           duration_minutes: durationMin,
+          duration_seconds: Math.round(durationMs / 1000),
+          start_timestamp: currentSession.start_timestamp,
+          end_timestamp: new Date().toISOString(),
+          avg_hr: avgHr,
           lifts,
         });
       } catch (e) {
@@ -193,6 +201,13 @@ export default function SessionScreen() {
             {isConnected ? 'センサー接続中' : 'センサー未接続'}
           </Text>
         </View>
+        {currentHeartRate && (
+          <View style={styles.hrBadge}>
+            <Text style={styles.hrEmoji}>❤️</Text>
+            <Text style={styles.hrValue}>{Math.round(currentHeartRate)}</Text>
+            <Text style={styles.hrUnit}>bpm</Text>
+          </View>
+        )}
       </View>
 
       {/* セッション開始バナー */}
@@ -211,6 +226,16 @@ export default function SessionScreen() {
           <Text style={styles.sessionActiveText}>
             ✅ セット {currentSetIndex} 記録中
           </Text>
+        </View>
+      )}
+
+      {/* Rest Timer Banner */}
+      {isSessionActive && restStartTime && (
+        <View style={styles.restBanner}>
+          <View style={styles.restHeader}>
+            <Text style={styles.restLabel}>RESTING...</Text>
+            <RestTimer startTime={restStartTime} hr={currentHeartRate} peakHr={setHistory.length > 0 ? setHistory[setHistory.length - 1].peak_hr : null} />
+          </View>
         </View>
       )}
 
@@ -427,6 +452,39 @@ export default function SessionScreen() {
   );
 }
 
+/**
+ * レストタイマーコンポーネント
+ */
+function RestTimer({ startTime, hr, peakHr }: { startTime: number, hr: number | null, peakHr: number | null | undefined }) {
+  const [elapsed, setElapsed] = useState(0);
+
+  useEffect(() => {
+    const timer = setInterval(() => {
+      setElapsed(Math.floor((Date.now() - startTime) / 1000));
+    }, 1000);
+    return () => clearInterval(timer);
+  }, [startTime]);
+
+  const formatTime = (sec: number) => {
+    const m = Math.floor(sec / 60);
+    const s = sec % 60;
+    return `${m}:${s < 10 ? '0' : ''}${s}`;
+  };
+
+  const isReady = hr && peakHr ? (hr < 120 || hr < peakHr * 0.8) : false;
+
+  return (
+    <View style={styles.timerRow}>
+      <Text style={styles.timerText}>{formatTime(elapsed)}</Text>
+      {isReady && (
+        <View style={styles.readyBadge}>
+          <Text style={styles.readyText}>READY 🔥</Text>
+        </View>
+      )}
+    </View>
+  );
+}
+
 const styles = StyleSheet.create({
   container: {
     flex: 1,
@@ -465,7 +523,20 @@ const styles = StyleSheet.create({
   statusRow: {
     flexDirection: 'row',
     alignItems: 'center',
+    flex: 1,
   },
+  hrBadge: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: '#333',
+    paddingHorizontal: 8,
+    paddingVertical: 4,
+    borderRadius: 16,
+    gap: 4,
+  },
+  hrEmoji: { fontSize: 14 },
+  hrValue: { fontSize: 16, fontWeight: 'bold', color: '#ff4444' },
+  hrUnit: { fontSize: 10, color: '#999' },
   statusDot: {
     width: 10,
     height: 10,
@@ -671,6 +742,17 @@ const styles = StyleSheet.create({
     color: '#4CAF50',
     fontWeight: '600',
   },
+  // レストバナー
+  restBanner: {
+    marginHorizontal: 16, marginBottom: 16, padding: 16,
+    backgroundColor: '#1a1a2e', borderRadius: 12, borderWidth: 1, borderColor: '#3f51b5',
+  },
+  restHeader: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' },
+  restLabel: { fontSize: 12, color: '#3f51b5', fontWeight: 'bold' },
+  timerRow: { flexDirection: 'row', alignItems: 'center', gap: 12 },
+  timerText: { fontSize: 24, fontWeight: 'bold', color: '#fff', fontVariant: ['tabular-nums'] },
+  readyBadge: { backgroundColor: '#4CAF50', paddingHorizontal: 8, paddingVertical: 4, borderRadius: 4 },
+  readyText: { color: '#fff', fontSize: 12, fontWeight: 'bold' },
   // 速度ゾーンバッジ
   zoneBadge: {
     flexDirection: 'row',

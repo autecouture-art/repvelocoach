@@ -10,6 +10,7 @@ import AudioService from '../services/AudioService';
 import { VBTLogic } from '../services/VBTLogic';
 import DatabaseService from '../services/DatabaseService';
 import AICoachService from '../services/AICoachService';
+import HealthService from '../services/HealthService';
 import type { RepVeloData, Exercise, RepData, SetData, PRRecord } from '../types/index';
 
 // PR検知コールバック型
@@ -30,6 +31,11 @@ export const useSessionLogic = (onPRDetected?: PRCallback) => {
     repHistory,
     setHistory,
     settings,
+    currentHeartRate,
+    setHRPoints,
+    sessionHRPoints,
+    restStartTime,
+    setStartTimeStamp,
 
     // Actions
     setConnectionStatus,
@@ -37,7 +43,12 @@ export const useSessionLogic = (onPRDetected?: PRCallback) => {
     addRep,
     completeSet,
     resetSetData,
+    updateHeartRate,
+    startRest,
   } = useTrainingStore();
+
+  const isMounted = useRef(true);
+  const lastNotifiedRestTime = useRef<number | null>(null);
 
   // --- BLE Event Handlers ---
 
@@ -78,6 +89,7 @@ export const useSessionLogic = (onPRDetected?: PRCallback) => {
         timestamp: new Date().toISOString(),
         is_valid_rep: true,
         set_type: 'normal',
+        hr_bpm: currentHeartRate || undefined,
       };
 
       // 5. Add to Store
@@ -90,20 +102,27 @@ export const useSessionLogic = (onPRDetected?: PRCallback) => {
         }
       }
     }
-  }, [currentSession, currentLift, currentSetIndex, repHistory, currentLoad, settings, setLiveData, addRep]);
+  }, [
+    currentExercise,
+    currentLoad,
+    currentSession,
+    currentLift,
+    currentSetIndex,
+    repHistory,
+    settings,
+    setLiveData,
+    addRep,
+    currentHeartRate,
+  ]);
 
   const handleConnectionChanged = useCallback((connected: boolean) => {
     setConnectionStatus(connected);
-    if (connected) {
-      AudioService.speak('Sensor Connected');
-    } else {
-      AudioService.speak('Sensor Disconnected');
-    }
   }, [setConnectionStatus]);
 
   // --- Setup & Teardown ---
 
   useEffect(() => {
+    isMounted.current = true;
     // Initialize Services
     AudioService.initialize();
 
@@ -115,12 +134,53 @@ export const useSessionLogic = (onPRDetected?: PRCallback) => {
     });
 
     // Check initial connection
-    BLEService.isConnected().then(result => setConnectionStatus(result));
+    BLEService.isConnected().then(result => {
+      if (isMounted.current) setConnectionStatus(result);
+    });
 
     return () => {
+      isMounted.current = false;
       // Cleanup callbacks? (Optional if singleton persists)
     };
   }, [handleDataReceived, handleConnectionChanged, setConnectionStatus]);
+
+  // --- Heart Rate Monitoring ---
+  useEffect(() => {
+    let hrTimerId: any = null;
+
+    if (isSessionActive) {
+      HealthService.authorize().then(authorized => {
+        if (authorized && isMounted.current) {
+          hrTimerId = HealthService.startHeartRateMonitoring((bpm) => {
+            if (isMounted.current) updateHeartRate(bpm);
+          });
+        }
+      });
+    }
+
+    return () => {
+      if (hrTimerId) HealthService.stopHeartRateMonitoring(hrTimerId);
+    };
+  }, [isSessionActive, updateHeartRate]);
+
+  // --- Rest Timing & Ready Notification ---
+  useEffect(() => {
+    if (restStartTime && currentHeartRate) {
+      // 重複通知防止: 既に現在の休憩時間で通知済みなら何もしない
+      if (lastNotifiedRestTime.current === restStartTime) return;
+
+      const readyThreshold = 120;
+      const peakHr = setHistory.length > 0 ? setHistory[setHistory.length - 1].peak_hr || 180 : 180;
+
+      const isReadyByAbsolute = currentHeartRate < readyThreshold;
+      const isReadyByRecovery = currentHeartRate < peakHr * 0.8;
+
+      if (isReadyByAbsolute || isReadyByRecovery) {
+        lastNotifiedRestTime.current = restStartTime;
+        AudioService.speak('You are ready for the next set');
+      }
+    }
+  }, [currentHeartRate, restStartTime, setHistory]);
 
 
   // --- User Actions ---
@@ -139,6 +199,12 @@ export const useSessionLogic = (onPRDetected?: PRCallback) => {
 
     const e1rm = VBTLogic.calculateE1RM(currentLoad, repHistory.length);
 
+    // 心拍数統計の計算
+    const avgHr = setHRPoints.length > 0 ? setHRPoints.reduce((s, x) => s + x, 0) / setHRPoints.length : currentHeartRate || undefined;
+    const peakHr = setHRPoints.length > 0 ? Math.max(...setHRPoints) : currentHeartRate || undefined;
+    const endTimestamp = new Date().toISOString();
+    const restDuration = restStartTime ? (Date.now() - restStartTime) / 1000 : undefined;
+
     const newSet: SetData = {
       session_id: currentSession?.session_id || 'offline',
       lift: currentLift || 'Unknown',
@@ -150,7 +216,12 @@ export const useSessionLogic = (onPRDetected?: PRCallback) => {
       avg_velocity: avgVel,
       velocity_loss: vLoss,
       e1rm: e1rm,
-      timestamp: new Date().toISOString(),
+      timestamp: endTimestamp,
+      start_timestamp: setStartTimeStamp || undefined,
+      end_timestamp: endTimestamp,
+      rest_duration_s: restDuration,
+      avg_hr: avgHr,
+      peak_hr: peakHr,
     };
 
     // Storeに保存
@@ -248,6 +319,7 @@ export const useSessionLogic = (onPRDetected?: PRCallback) => {
       console.error('セット保存失敗:', e);
     }
 
+    startRest(); // 休憩タイマー開始
     AudioService.speak('Set Complete');
   };
 

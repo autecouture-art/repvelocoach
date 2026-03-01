@@ -20,7 +20,8 @@ interface TrainingState {
   // Session State
   currentSession: TrainingSession | null;
   isSessionActive: boolean;
-  sessionStartTime: number | null;
+  sessionStartTime: number | null; // ms
+  sessionStartTimeStamp: string | null; // ISO
 
   // Current Set State
   currentSetIndex: number; // 1-based
@@ -29,11 +30,16 @@ interface TrainingState {
   currentReps: number;
   targetWeight: number | null; // 今日の目標（トップセット）重量
   setHistory: SetData[];
+  setStartTimeStamp: string | null; // セット開始時の ISO
+  restStartTime: number | null; // 休憩開始時の ms
 
   // Live Data State
   isConnected: boolean;
   liveData: RepVeloData | null;
   repHistory: RepData[]; // Current set reps
+  currentHeartRate: number | null;
+  sessionHRPoints: number[]; // セッション中の心拍数データポイント
+  setHRPoints: number[]; // 各セット中の心拍数データポイント
 
   // Settings & Metadata
   currentExercise: Exercise | null;
@@ -50,6 +56,11 @@ interface TrainingState {
   setTargetWeight: (weight: number | null) => void;
   setCurrentExercise: (exercise: Exercise) => void;
   resetSetData: () => void;
+
+  // New Actions for HR & Timer
+  updateHeartRate: (bpm: number | null) => void;
+  startSet: () => void;
+  startRest: () => void;
 }
 
 export const useTrainingStore = create<TrainingState>((set, get) => ({
@@ -57,6 +68,7 @@ export const useTrainingStore = create<TrainingState>((set, get) => ({
   currentSession: null,
   isSessionActive: false,
   sessionStartTime: null,
+  sessionStartTimeStamp: null,
 
   currentSetIndex: 1,
   currentLift: null,
@@ -64,10 +76,15 @@ export const useTrainingStore = create<TrainingState>((set, get) => ({
   currentReps: 5,
   targetWeight: null,
   setHistory: [],
+  setStartTimeStamp: null,
+  restStartTime: null,
 
   isConnected: false,
   liveData: null,
   repHistory: [],
+  currentHeartRate: null,
+  sessionHRPoints: [],
+  setHRPoints: [],
 
   currentExercise: null,
   settings: {
@@ -89,13 +106,18 @@ export const useTrainingStore = create<TrainingState>((set, get) => ({
         exercises: [],
         sets: [],
         total_volume: 0,
+        start_timestamp: new Date().toISOString(),
       },
       isSessionActive: true,
       sessionStartTime: Date.now(),
+      sessionStartTimeStamp: new Date().toISOString(),
       setHistory: [],
       currentSetIndex: 1,
       repHistory: [],
       targetWeight: null,
+      sessionHRPoints: [],
+      setStartTimeStamp: new Date().toISOString(),
+      restStartTime: null,
     });
   },
 
@@ -104,7 +126,10 @@ export const useTrainingStore = create<TrainingState>((set, get) => ({
       isSessionActive: false,
       currentSession: null,
       sessionStartTime: null,
+      sessionStartTimeStamp: null,
       liveData: null,
+      currentHeartRate: null,
+      restStartTime: null,
     });
   },
 
@@ -119,6 +144,8 @@ export const useTrainingStore = create<TrainingState>((set, get) => ({
   addRep: (rep: RepData) => {
     set((state) => ({
       repHistory: [...state.repHistory, rep],
+      // 心拍数があれば記録ポイントに追加
+      setHRPoints: state.currentHeartRate ? [...state.setHRPoints, state.currentHeartRate] : state.setHRPoints,
     }));
   },
 
@@ -145,6 +172,32 @@ export const useTrainingStore = create<TrainingState>((set, get) => ({
       currentLift: exercise.name,
       // Reset set counter if switching exercises? Maybe optional.
       // For now, keep session flow simple.
+      setStartTimeStamp: new Date().toISOString(),
+    });
+  },
+
+  updateHeartRate: (bpm: number | null) => {
+    if (bpm) {
+      set((state) => ({
+        currentHeartRate: bpm,
+        sessionHRPoints: [...state.sessionHRPoints, bpm],
+      }));
+    } else {
+      set({ currentHeartRate: null });
+    }
+  },
+
+  startSet: () => {
+    set({
+      setStartTimeStamp: new Date().toISOString(),
+      restStartTime: null,
+      setHRPoints: [],
+    });
+  },
+
+  startRest: () => {
+    set({
+      restStartTime: Date.now(),
     });
   },
 

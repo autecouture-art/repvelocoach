@@ -25,6 +25,7 @@ export interface RepData {
   rpe_set?: number;
   set_type: SetType;
   notes?: string;
+  hr_bpm?: number; // 心拍数 (bpm)
   timestamp: string;
 }
 
@@ -40,7 +41,12 @@ export interface SetData {
   velocity_loss: number | null;
   rpe?: number;
   e1rm?: number;
-  timestamp: string;
+  timestamp: string; // 完了時間
+  start_timestamp?: string; // セット開始時間
+  end_timestamp?: string; // セット完了時間
+  rest_duration_s?: number; // 前のセットからの休憩時間
+  avg_hr?: number; // 平均心拍数
+  peak_hr?: number; // 最大心拍数
   notes?: string;
 }
 
@@ -51,6 +57,10 @@ export interface SessionData {
   total_sets: number;
   lifts: string[];
   duration_minutes?: number;
+  duration_seconds?: number; // 詳細な経過時間
+  start_timestamp?: string; // セッション開始時間
+  end_timestamp?: string; // セッション終了時間
+  avg_hr?: number; // 平均心拍数
   notes?: string;
 }
 
@@ -126,6 +136,9 @@ export interface TrainingSession {
   sets: SetData[];
   total_volume: number;
   readiness_score?: number;
+  start_timestamp?: string;
+  end_timestamp?: string;
+  avg_hr?: number;
   notes?: string;
 }
 

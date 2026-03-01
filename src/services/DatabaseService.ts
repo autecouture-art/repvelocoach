@@ -48,6 +48,7 @@ class DatabaseService {
     try {
       this.db = await SQLite.openDatabaseAsync(DB_NAME);
       await this.createTables();
+      await this.migrate(); // カラム追加などのマイグレーション
       console.log('Database initialized successfully');
     } catch (error) {
       console.error('Failed to initialize database:', error);
@@ -74,6 +75,10 @@ class DatabaseService {
         total_volume REAL DEFAULT 0,
         total_sets INTEGER DEFAULT 0,
         duration_minutes INTEGER,
+        duration_seconds INTEGER,
+        start_timestamp TEXT,
+        end_timestamp TEXT,
+        avg_hr REAL,
         notes TEXT,
         created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
       );
@@ -95,6 +100,11 @@ class DatabaseService {
         rpe REAL,
         e1rm REAL,
         timestamp TEXT NOT NULL,
+        start_timestamp TEXT,
+        end_timestamp TEXT,
+        rest_duration_s REAL,
+        avg_hr REAL,
+        peak_hr REAL,
         notes TEXT,
         FOREIGN KEY (session_id) REFERENCES sessions(session_id)
       );
@@ -118,6 +128,7 @@ class DatabaseService {
         rpe_set REAL,
         set_type TEXT NOT NULL,
         notes TEXT,
+        hr_bpm REAL,
         timestamp TEXT NOT NULL,
         FOREIGN KEY (session_id) REFERENCES sessions(session_id)
       );
@@ -169,20 +180,56 @@ class DatabaseService {
   }
 
   /**
+   * カラム追加などのマイグレーション処理
+   */
+  private async migrate(): Promise<void> {
+    if (!this.db) return;
+
+    const migrations = [
+      // Sessions
+      { table: 'sessions', column: 'duration_seconds', type: 'INTEGER' },
+      { table: 'sessions', column: 'start_timestamp', type: 'TEXT' },
+      { table: 'sessions', column: 'end_timestamp', type: 'TEXT' },
+      { table: 'sessions', column: 'avg_hr', type: 'REAL' },
+      // Sets
+      { table: 'sets', column: 'start_timestamp', type: 'TEXT' },
+      { table: 'sets', column: 'end_timestamp', type: 'TEXT' },
+      { table: 'sets', column: 'rest_duration_s', type: 'REAL' },
+      { table: 'sets', column: 'avg_hr', type: 'REAL' },
+      { table: 'sets', column: 'peak_hr', type: 'REAL' },
+      // Reps
+      { table: 'reps', column: 'hr_bpm', type: 'REAL' },
+    ];
+
+    for (const m of migrations) {
+      try {
+        await this.db.execAsync(`ALTER TABLE ${m.table} ADD COLUMN ${m.column} ${m.type};`);
+        console.log(`Added column ${m.column} to ${m.table}`);
+      } catch (e) {
+        // すでにカラムが存在する場合はエラーになるが、無視して続行
+      }
+    }
+  }
+
+  /**
    * Insert a new session
    */
   async insertSession(session: SessionData): Promise<void> {
     if (!this.db) return;
 
     await this.db.runAsync(
-      `INSERT INTO sessions (session_id, date, total_volume, total_sets, duration_minutes, notes)
-       VALUES (?, ?, ?, ?, ?, ?)`,
+      `INSERT INTO sessions (session_id, date, total_volume, total_sets, duration_minutes, duration_seconds, start_timestamp, end_timestamp, avg_hr, notes)
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
       [
         session.session_id,
         session.date,
         session.total_volume,
         session.total_sets,
         session.duration_minutes || null,
+        session.duration_seconds || null,
+        session.start_timestamp || null,
+        session.end_timestamp || null,
+        session.avg_hr || null,
         session.notes || null,
       ]
     );
@@ -196,8 +243,8 @@ class DatabaseService {
 
     await this.db.runAsync(
       `INSERT INTO sets (session_id, lift, set_index, load_kg, reps, device_type, set_type,
-        avg_velocity, velocity_loss, rpe, e1rm, timestamp, notes)
-       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+        avg_velocity, velocity_loss, rpe, e1rm, timestamp, start_timestamp, end_timestamp, rest_duration_s, avg_hr, peak_hr, notes)
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
       [
         setData.session_id,
         setData.lift,
@@ -211,6 +258,11 @@ class DatabaseService {
         setData.rpe || null,
         setData.e1rm || null,
         setData.timestamp,
+        setData.start_timestamp || null,
+        setData.end_timestamp || null,
+        setData.rest_duration_s || null,
+        setData.avg_hr || null,
+        setData.peak_hr || null,
         setData.notes || null,
       ]
     );
@@ -225,8 +277,8 @@ class DatabaseService {
     await this.db.runAsync(
       `INSERT INTO reps (session_id, lift, set_index, rep_index, load_kg, device_type,
         mean_velocity, peak_velocity, rom_cm, rep_duration_ms, is_valid_rep,
-        rpe_set, set_type, notes, timestamp)
-       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+        rpe_set, set_type, notes, hr_bpm, timestamp)
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
       [
         repData.session_id,
         repData.lift,
@@ -242,6 +294,7 @@ class DatabaseService {
         repData.rpe_set || null,
         repData.set_type,
         repData.notes || null,
+        repData.hr_bpm || null,
         repData.timestamp,
       ]
     );
