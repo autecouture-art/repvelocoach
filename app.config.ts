@@ -32,25 +32,25 @@ const config: ExpoConfig = {
   ios: {
     supportsTablet: true,
     bundleIdentifier: env.iosBundleId,
-    buildNumber: "15",
+    buildNumber: "22",
     infoPlist: {
       ITSAppUsesNonExemptEncryption: false,
       NSBluetoothAlwaysUsageDescription:
-        "This app uses Bluetooth to connect to RepVelo Velocity sensors for real-time velocity tracking during your workouts.",
+        "このアプリはBluetoothを使用してRepVelo Velocityセンサーに接続し、トレーニング中のリアルタイム速度計測を行います。",
       NSBluetoothPeripheralUsageDescription:
-        "This app uses Bluetooth to connect to RepVelo Velocity sensors.",
+        "このアプリはBluetoothを使用してRepVelo Velocityセンサーに接続します。",
       NSCameraUsageDescription:
-        "This app uses the camera to record your workout videos for form analysis.",
+        "このアプリはカメラを使用してフォーム分析用のトレーニング動画を録画します。",
       NSMicrophoneUsageDescription:
-        "This app uses the microphone for voice commands during your workouts.",
+        "このアプリはマイクを使用してトレーニング中の音声コマンド機能を提供します。",
       NSPhotoLibraryUsageDescription:
-        "This app saves workout videos to your photo library.",
+        "このアプリはトレーニング動画をフォトライブラリに保存します。",
       NSLocationWhenInUseUsageDescription:
-        "This app may use location services for enhanced training features.",
+        "このアプリは位置情報サービスをトレーニング機能の向上に使用する場合があります。",
       NSHealthShareUsageDescription:
-        "Allow RepVelo Coach to read heart rate data from your AirPods or Apple Watch to optimize your rest intervals and training intensity.",
+        "RepVelo CoachがAirPodsやApple Watchの心拍データを読み取り、休息時間やトレーニング強度を最適化することを許可してください。",
       NSHealthUpdateUsageDescription:
-        "Allow RepVelo Coach to integrate with HealthKit to provide a comprehensive view of your training data.",
+        "RepVelo CoachがHealthKitと統合し、トレーニングデータを包括的に表示することを許可してください。",
     },
   },
   android: {
@@ -97,7 +97,7 @@ const config: ExpoConfig = {
     [
       "expo-audio",
       {
-        microphonePermission: "Allow $(PRODUCT_NAME) to access your microphone.",
+        microphonePermission: "$(PRODUCT_NAME)がマイクにアクセスすることを許可してください。",
       },
     ],
     [
@@ -137,7 +137,7 @@ const config: ExpoConfig = {
         isBackgroundEnabled: true,
         modes: ["peripheral", "central"],
         bluetoothAlwaysPermission:
-          "Allow RepVelo Coach to connect to RepVelo Velocity sensors",
+          "RepVelo CoachがRepVelo Velocityセンサーに接続することを許可してください",
       },
     ],
   ],

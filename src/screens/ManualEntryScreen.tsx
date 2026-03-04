@@ -112,6 +112,7 @@ const ManualEntryScreen: React.FC<ManualEntryScreenProps> = ({ navigation }) => 
           mean_velocity: null,
           peak_velocity: null,
           rom_cm: null,
+          mean_power_w: null,
           rep_duration_ms: null,
           is_valid_rep: true,
           rpe_set: rpeValue,

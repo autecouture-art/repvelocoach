@@ -5,6 +5,8 @@
 
 import { Platform } from 'react-native';
 import Constants from 'expo-constants';
+import { VBTLogic } from './VBTLogic';
+import VBTCalculations from '../utils/VBTCalculations';
 import type {
   SessionData,
   SetData,
@@ -114,6 +116,7 @@ class DatabaseService {
     await this.db.execAsync(`
       CREATE TABLE IF NOT EXISTS reps (
         id INTEGER PRIMARY KEY AUTOINCREMENT,
+        rep_id TEXT, -- UUID from RepData.id for consistent tracking
         session_id TEXT NOT NULL,
         lift TEXT NOT NULL,
         set_index INTEGER NOT NULL,
@@ -125,11 +128,16 @@ class DatabaseService {
         rom_cm REAL,
         rep_duration_ms REAL,
         is_valid_rep INTEGER DEFAULT 1,
+        is_short_rom INTEGER DEFAULT 0,
         rpe_set REAL,
         set_type TEXT NOT NULL,
         notes TEXT,
         hr_bpm REAL,
         timestamp TEXT NOT NULL,
+        is_excluded INTEGER DEFAULT 0,
+        exclusion_reason TEXT,
+        edited_at INTEGER,
+        is_failed INTEGER DEFAULT 0,
         FOREIGN KEY (session_id) REFERENCES sessions(session_id)
       );
     `);
@@ -140,9 +148,11 @@ class DatabaseService {
         lift TEXT PRIMARY KEY,
         vmax REAL NOT NULL,
         v1rm REAL NOT NULL,
+        mvt REAL,
         slope REAL NOT NULL,
         intercept REAL NOT NULL,
         r_squared REAL NOT NULL,
+        sample_count INTEGER DEFAULT 0,
         last_updated TEXT NOT NULL
       );
     `);
@@ -172,7 +182,9 @@ class DatabaseService {
         machine_weight_steps TEXT,
         min_rom_threshold REAL DEFAULT 10.0,
         rep_detection_mode TEXT DEFAULT 'standard',
-        target_pause_ms INTEGER DEFAULT 0
+        target_pause_ms INTEGER DEFAULT 0,
+        description TEXT,
+        mvt REAL
       );
     `);
 
@@ -197,12 +209,21 @@ class DatabaseService {
       { table: 'sets', column: 'rest_duration_s', type: 'REAL' },
       { table: 'sets', column: 'avg_hr', type: 'REAL' },
       { table: 'sets', column: 'peak_hr', type: 'REAL' },
-      // Reps
-      { table: 'reps', column: 'hr_bpm', type: 'REAL' },
-      // Exercises
-      { table: 'exercises', column: 'min_rom_threshold', type: 'REAL' },
-      { table: 'exercises', column: 'rep_detection_mode', type: 'TEXT' },
-      { table: 'exercises', column: 'target_pause_ms', type: 'INTEGER' },
+      // Reps 追加カラム
+      { table: 'reps', column: 'is_excluded', type: 'INTEGER DEFAULT 0' },
+      { table: 'reps', column: 'exclusion_reason', type: 'TEXT' },
+      { table: 'reps', column: 'edited_at', type: 'INTEGER' },
+      { table: 'reps', column: 'is_short_rom', type: 'INTEGER DEFAULT 0' },
+      { table: 'reps', column: 'is_failed', type: 'INTEGER DEFAULT 0' },
+      { table: 'reps', column: 'rep_id', type: 'TEXT' }, // UUID for consistent rep tracking
+      // Exercises 追加カラム
+      { table: 'exercises', column: 'description', type: 'TEXT' },
+      { table: 'exercises', column: 'category', type: 'TEXT' },
+      { table: 'exercises', column: 'mvt', type: 'REAL' },
+      // LVP Profiles 追加カラム
+      { table: 'lvp_profiles', column: 'sample_count', type: 'INTEGER DEFAULT 0' },
+      { table: 'lvp_profiles', column: 'r_squared', type: 'REAL' },
+      { table: 'lvp_profiles', column: 'mvt', type: 'REAL' },
     ];
 
     for (const m of migrations) {
@@ -235,6 +256,32 @@ class DatabaseService {
         session.end_timestamp || null,
         session.avg_hr || null,
         session.notes || null,
+      ]
+    );
+  }
+
+  /**
+   * Update an existing session
+   */
+  async updateSession(session: SessionData): Promise<void> {
+    if (!this.db) return;
+
+    await this.db.runAsync(
+      `UPDATE sessions SET
+        date = ?, total_volume = ?, total_sets = ?, duration_minutes = ?, duration_seconds = ?,
+        start_timestamp = ?, end_timestamp = ?, avg_hr = ?, notes = ?
+       WHERE session_id = ?`,
+      [
+        session.date,
+        session.total_volume,
+        session.total_sets,
+        session.duration_minutes || null,
+        session.duration_seconds || null,
+        session.start_timestamp || null,
+        session.end_timestamp || null,
+        session.avg_hr || null,
+        session.notes || null,
+        session.session_id,
       ]
     );
   }
@@ -279,11 +326,12 @@ class DatabaseService {
     if (!this.db) return;
 
     await this.db.runAsync(
-      `INSERT INTO reps (session_id, lift, set_index, rep_index, load_kg, device_type,
-        mean_velocity, peak_velocity, rom_cm, rep_duration_ms, is_valid_rep,
-        rpe_set, set_type, notes, hr_bpm, timestamp)
-       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+      `INSERT INTO reps (rep_id, session_id, lift, set_index, rep_index, load_kg, device_type,
+        mean_velocity, peak_velocity, rom_cm, rep_duration_ms, is_valid_rep, is_short_rom,
+        rpe_set, set_type, notes, hr_bpm, timestamp, is_excluded, exclusion_reason, edited_at, is_failed)
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
       [
+        repData.id || null, // UUID
         repData.session_id,
         repData.lift,
         repData.set_index,
@@ -295,13 +343,161 @@ class DatabaseService {
         repData.rom_cm || null,
         repData.rep_duration_ms || null,
         repData.is_valid_rep ? 1 : 0,
+        repData.is_short_rom ? 1 : 0,
         repData.rpe_set || null,
         repData.set_type,
         repData.notes || null,
         repData.hr_bpm || null,
         repData.timestamp,
+        repData.is_excluded ? 1 : 0,
+        repData.exclusion_reason || null,
+        repData.edited_at || null,
+        repData.is_failed ? 1 : 0,
       ]
     );
+  }
+
+  /**
+   * 除外フラグを立てる (Phase 1)
+   */
+  async excludeRep(repId: string, reason: string): Promise<void> {
+    if (!this.db) return;
+    // rep_id (UUID) で検索、見つからなければフォールバックして id (INTEGER) で検索
+    await this.db.runAsync(
+      'UPDATE reps SET is_excluded = 1, exclusion_reason = ?, edited_at = ? WHERE rep_id = ?',
+      [reason, Date.now(), repId]
+    );
+    // フォールバック: rep_idで該当しなかった場合、旧データのid(整数)で試行
+    const numericId = parseInt(repId, 10);
+    if (!isNaN(numericId)) {
+      await this.db.runAsync(
+        'UPDATE reps SET is_excluded = 1, exclusion_reason = ?, edited_at = ? WHERE id = ? AND rep_id IS NULL',
+        [reason, Date.now(), numericId]
+      );
+    }
+  }
+
+  /**
+   * 失敗フラグを立てる (Phase 5)
+   */
+  async markRepAsFailed(repId: string, isFailed: boolean): Promise<void> {
+    if (!this.db) return;
+    // rep_id (UUID) で検索、見つからなければフォールバックして id (INTEGER) で検索
+    await this.db.runAsync(
+      'UPDATE reps SET is_failed = ?, edited_at = ? WHERE rep_id = ?',
+      [isFailed ? 1 : 0, Date.now(), repId]
+    );
+    // フォールバック: rep_idで該当しなかった場合、旧データのid(整数)で試行
+    const numericId = parseInt(repId, 10);
+    if (!isNaN(numericId)) {
+      await this.db.runAsync(
+        'UPDATE reps SET is_failed = ?, edited_at = ? WHERE id = ? AND rep_id IS NULL',
+        [isFailed ? 1 : 0, Date.now(), numericId]
+      );
+    }
+  }
+
+  /**
+   * セット情報の修正 (除外後などの再計算時に使用)
+   */
+  async updateSetMetrics(sessionId: string, setIndex: number, setData: Partial<SetData>, lift?: string): Promise<void> {
+    if (!this.db) return;
+
+    // Partial updates based on what is provided
+    let query = 'UPDATE sets SET ';
+    const queryParams: any[] = [];
+    const updateFields: string[] = [];
+
+    if (setData.reps !== undefined) { updateFields.push('reps = ?'); queryParams.push(setData.reps); }
+    if (setData.avg_velocity !== undefined) { updateFields.push('avg_velocity = ?'); queryParams.push(setData.avg_velocity); }
+    if (setData.velocity_loss !== undefined) { updateFields.push('velocity_loss = ?'); queryParams.push(setData.velocity_loss); }
+    if (setData.rpe !== undefined) { updateFields.push('rpe = ?'); queryParams.push(setData.rpe); }
+    if (setData.e1rm !== undefined) { updateFields.push('e1rm = ?'); queryParams.push(setData.e1rm); }
+
+    if (updateFields.length === 0) return;
+
+    query += updateFields.join(', ') + ' WHERE session_id = ? AND set_index = ?';
+    queryParams.push(sessionId, setIndex);
+
+    // liftが指定されている場合はWHERE句に追加（種目切り替え時の更新ミス防止）
+    if (lift) {
+      query += ' AND lift = ?';
+      queryParams.push(lift);
+    }
+
+    await this.db.runAsync(query, queryParams);
+  }
+
+  /**
+   * 統一再集計関数: レップ除外・失敗後にセットのメトリクスを再計算する
+   * @param sessionId セッションID
+   * @param lift 種目名
+   * @param setIndex セットインデックス
+   * @returns 再計算されたセットメトリクス
+   */
+  async recalculateSetMetrics(
+    sessionId: string,
+    lift: string,
+    setIndex: number
+  ): Promise<{ reps: number; avg_velocity: number; velocity_loss: number; e1rm?: number | null } | null> {
+    if (!this.db) return null;
+
+    // 1. セットデータを取得
+    const sets = await this.getSetsForSession(sessionId);
+    const setData = sets.find(s => s.set_index === setIndex && s.lift === lift);
+    if (!setData) return null;
+
+    // 2. このセットの全レップを取得
+    const allSetReps = await this.getRepsForSet(sessionId, lift, setIndex);
+
+    // 3. 有効なレップのみを抽出（除外・失敗・無効レップを除外）
+    const validReps = allSetReps.filter(r => !r.is_excluded && !r.is_failed && r.is_valid_rep);
+
+    if (validReps.length === 0) {
+      // 有効なレップがない場合、0として扱う
+      return {
+        reps: 0,
+        avg_velocity: 0,
+        velocity_loss: 0,
+        e1rm: undefined,
+      };
+    }
+
+    // 4. 平均速度を計算
+    const avgVel = validReps.reduce((sum, r) => sum + (r.mean_velocity ?? 0), 0) / validReps.length;
+
+    // 5. Velocity Lossを計算（セット内最高速度 vs 平均速度）
+    const vLoss = VBTCalculations.calculateSetVelocityLoss(validReps) ?? 0;
+
+    // 6. e1RMを計算（reps <= 0の場合はnull）
+    const e1rm = VBTLogic.calculateE1RM(setData.load_kg, validReps.length) ?? null;
+
+    return {
+      reps: validReps.length,
+      avg_velocity: avgVel,
+      velocity_loss: vLoss,
+      e1rm: e1rm,
+    };
+  }
+
+  /**
+   * レップ編集後の完全再集計（DB更新 + セッションボリューム再計算）
+   * @param sessionId セッションID
+   * @param lift 種目名
+   * @param setIndex セットインデックス
+   */
+  async recalculateAndUpdateSet(sessionId: string, lift: string, setIndex: number): Promise<void> {
+    if (!this.db) return;
+
+    // 1. メトリクスを再計算
+    const metrics = await this.recalculateSetMetrics(sessionId, lift, setIndex);
+    if (!metrics) return;
+
+    // 2. セットを更新（liftを含めて種目切り替え時の更新ミスを防止）
+    await this.updateSetMetrics(sessionId, setIndex, metrics, lift);
+
+    // 3. セッション全体のボリュームを再集計
+    await this.recalcSessionVolume(sessionId);
   }
 
   /**
@@ -311,15 +507,17 @@ class DatabaseService {
     if (!this.db) return;
 
     await this.db.runAsync(
-      `INSERT OR REPLACE INTO lvp_profiles (lift, vmax, v1rm, slope, intercept, r_squared, last_updated)
-       VALUES (?, ?, ?, ?, ?, ?, ?)`,
+      `INSERT OR REPLACE INTO lvp_profiles (lift, vmax, v1rm, mvt, slope, intercept, r_squared, sample_count, last_updated)
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`,
       [
         lvpData.lift,
         lvpData.vmax,
         lvpData.v1rm,
+        lvpData.mvt || null,
         lvpData.slope,
         lvpData.intercept,
         lvpData.r_squared,
+        lvpData.sample_count || 0,
         lvpData.last_updated,
       ]
     );
@@ -360,6 +558,50 @@ class DatabaseService {
         prRecord.improvement,
       ]
     );
+  }
+
+  /**
+   * MVT補正用に、直近のセッションから高負荷設定のレップを抽出する
+   * @param lift 種目名
+   * @param limit_sessions 参照する直近セッション数 (default: 5)
+   */
+  async getHighLoadRepsForMVT(lift: string, limit_sessions: number = 5): Promise<RepData[]> {
+    if (!this.db) return [];
+
+    // 直近 N 件のセッションIDを取得
+    const sessionRows = (await this.db.getAllAsync(
+      `SELECT DISTINCT session_id FROM sets WHERE lift = ? ORDER BY timestamp DESC LIMIT ?`,
+      [lift, limit_sessions]
+    )) as { session_id: string }[];
+
+    if (sessionRows.length === 0) return [];
+
+    // SQL IN句をプレースホルダ化
+    const placeholders = sessionRows.map(() => '?').join(',');
+    const sessionIds = sessionRows.map(r => r.session_id);
+
+    // 該当セッションの中から、速度が低く（高負荷を示唆）有効なレップを抽出
+    const reps = (await this.db.getAllAsync(`
+      SELECT * FROM reps
+      WHERE lift = ?
+        AND session_id IN (${placeholders})
+        AND is_valid_rep = 1
+        AND is_excluded = 0
+        AND is_failed = 0
+        AND mean_velocity > 0.05
+        AND mean_velocity < 0.35
+      ORDER BY mean_velocity ASC
+    `, [lift, ...sessionIds])) as any[];
+
+    // Map rep_id to id property for consistent tracking
+    return reps.map((row: any) => ({
+      ...row,
+      id: String(row.rep_id || row.id), // Use rep_id (UUID) if available, otherwise fall back to id (INTEGER), ensure string
+      is_valid_rep: row.is_valid_rep === 1,
+      is_short_rom: row.is_short_rom === 1,
+      is_excluded: row.is_excluded === 1,
+      is_failed: row.is_failed === 1,
+    }));
   }
 
   /**
@@ -412,9 +654,17 @@ class DatabaseService {
     const results = await (this.db.getAllAsync(
       'SELECT * FROM reps WHERE session_id = ? AND lift = ? AND set_index = ? ORDER BY rep_index',
       [sessionId, lift, setIndex]
-    ) as Promise<RepData[]>);
+    ) as Promise<any[]>);
 
-    return results;
+    // Map rep_id to id property for consistent tracking, ensure string type
+    return results.map((row: any) => ({
+      ...row,
+      id: String(row.rep_id || row.id), // Use rep_id (UUID) if available, otherwise fall back to id (INTEGER), ensure string
+      is_valid_rep: row.is_valid_rep === 1,
+      is_short_rom: row.is_short_rom === 1,
+      is_excluded: row.is_excluded === 1,
+      is_failed: row.is_failed === 1,
+    }));
   }
 
   /**
@@ -426,9 +676,17 @@ class DatabaseService {
     const results = await (this.db.getAllAsync(
       'SELECT * FROM reps WHERE session_id = ? ORDER BY lift, set_index, rep_index',
       [sessionId]
-    ) as Promise<RepData[]>);
+    ) as Promise<any[]>);
 
-    return results;
+    // Map rep_id to id property for consistent tracking
+    return results.map((row: any) => ({
+      ...row,
+      id: String(row.rep_id || row.id), // Use rep_id (UUID) if available, otherwise fall back to id (INTEGER), ensure string
+      is_valid_rep: row.is_valid_rep === 1,
+      is_short_rom: row.is_short_rom === 1,
+      is_excluded: row.is_excluded === 1,
+      is_failed: row.is_failed === 1,
+    }));
   }
 
   /**
@@ -458,9 +716,9 @@ class DatabaseService {
     await this.db.runAsync(
       `INSERT OR REPLACE INTO exercises (
         id, name, category, has_lvp, machine_weight_steps, 
-        min_rom_threshold, rep_detection_mode, target_pause_ms
+        min_rom_threshold, rep_detection_mode, target_pause_ms, description, mvt
       )
-       VALUES (?, ?, ?, ?, ?, ?, ?, ?)`,
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
       [
         exercise.id,
         exercise.name,
@@ -470,6 +728,8 @@ class DatabaseService {
         exercise.min_rom_threshold ?? 10.0,
         exercise.rep_detection_mode ?? 'standard',
         exercise.target_pause_ms ?? 0,
+        exercise.description || null,
+        exercise.mvt || null,
       ]
     );
   }
@@ -491,6 +751,8 @@ class DatabaseService {
       min_rom_threshold: row.min_rom_threshold,
       rep_detection_mode: row.rep_detection_mode,
       target_pause_ms: row.target_pause_ms,
+      description: row.description || undefined,
+      mvt: row.mvt || undefined,
     }));
   }
 
@@ -553,7 +815,7 @@ class DatabaseService {
   /**
    * セットの負荷とRPEを更新
    */
-  async updateSet(sessionId: string, setIndex: number, updates: { load_kg?: number; rpe?: number; notes?: string }): Promise<void> {
+  async updateSet(sessionId: string, setIndex: number, updates: { load_kg?: number; rpe?: number; notes?: string; lift?: string }): Promise<void> {
     if (!this.db) return;
     const parts: string[] = [];
     const values: any[] = [];
@@ -562,20 +824,46 @@ class DatabaseService {
     if (updates.notes !== undefined) { parts.push('notes = ?'); values.push(updates.notes); }
     if (parts.length === 0) return;
     values.push(sessionId, setIndex);
+
+    // liftが指定されている場合はWHERE句に追加（種目切り替え時の更新ミス防止）
+    const liftCondition = updates.lift ? ' AND lift = ?' : '';
+    if (updates.lift) values.push(updates.lift);
+
     await this.db.runAsync(
-      `UPDATE sets SET ${parts.join(', ')} WHERE session_id = ? AND set_index = ?`,
+      `UPDATE sets SET ${parts.join(', ')} WHERE session_id = ? AND set_index = ?${liftCondition}`,
       values
     );
   }
 
   /**
    * セッション内の全セットのボリュームを集計して更新
+   * また、各セットのe1RMも再計算して更新する
    */
   async recalcSessionVolume(sessionId: string): Promise<void> {
     if (!this.db) return;
     const sets = await this.getSetsForSession(sessionId);
-    const totalVolume = sets.reduce((sum, s) => sum + s.load_kg * s.reps, 0);
-    const totalSets = sets.length;
+
+    // 各セットのe1RMを再計算
+    for (const setData of sets) {
+      const reps = await this.getRepsForSet(sessionId, setData.lift, setData.set_index);
+      const validReps = reps.filter(r => !r.is_excluded && !r.is_failed && r.is_valid_rep);
+      const actualRepsCount = validReps.length;
+
+      // e1RMを再計算 (VBTLogic.calculateE1RM使用 - reps <= 0の場合はnull)
+      const recalculatedE1RM = VBTLogic.calculateE1RM(setData.load_kg, actualRepsCount) ?? null;
+
+      // セットのe1RMとrepsを更新（liftを含めて種目切り替え時の更新ミスを防止）
+      await this.updateSetMetrics(sessionId, setData.set_index, {
+        reps: actualRepsCount,
+        e1rm: recalculatedE1RM,
+      }, setData.lift);
+    }
+
+    // セッション全体のボリュームとセット数を再集計 (更新後のセット情報を再取得)
+    const updatedSets = await this.getSetsForSession(sessionId);
+    const totalVolume = updatedSets.reduce((sum, s) => sum + s.load_kg * s.reps, 0);
+    const totalSets = updatedSets.length;
+
     await this.db.runAsync(
       'UPDATE sessions SET total_volume = ?, total_sets = ? WHERE session_id = ?',
       [totalVolume, totalSets, sessionId]

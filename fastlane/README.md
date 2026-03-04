@@ -31,6 +31,14 @@ For _fastlane_ installation instructions, see [Installing _fastlane_](https://do
 
 アーカイブのみ作成（アップロードしない）
 
+### ios upload_only
+
+```sh
+[bundle exec] fastlane ios upload_only
+```
+
+ビルド済みIPAをTestFlightへアップロード
+
 ----
 
 This README.md is auto-generated and will be re-generated every time [_fastlane_](https://fastlane.tools) is run.

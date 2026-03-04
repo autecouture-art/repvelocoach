@@ -31,11 +31,24 @@ describe('VBTLogic', () => {
       // 100 * (1 + 10/30) = 100 * 1.333... = 133.3
       expect(VBTLogic.calculateE1RM(100, 10)).toBeCloseTo(133.3, 1);
     });
-    
+
     it('should calculate correct e1RM for 60kg x 5 reps', () => {
         // 60 * (1 + 5/30) = 60 * 1.1666... = 70
         expect(VBTLogic.calculateE1RM(60, 5)).toBeCloseTo(70, 1);
       });
+
+    it('should return null for zero reps', () => {
+      expect(VBTLogic.calculateE1RM(100, 0)).toBeNull();
+    });
+
+    it('should return null for negative reps', () => {
+      expect(VBTLogic.calculateE1RM(100, -1)).toBeNull();
+    });
+
+    it('should return null for zero or negative load', () => {
+      expect(VBTLogic.calculateE1RM(0, 5)).toBeNull();
+      expect(VBTLogic.calculateE1RM(-10, 5)).toBeNull();
+    });
   });
 
   describe('calculatePower', () => {
@@ -52,24 +65,24 @@ describe('VBTLogic', () => {
 
   describe('checkPR', () => {
     const mockRecords = [
-      { id: '1', type: '1rm', lift: 'Bench Press', value: 100, date: '', improvement: 0 },
-      { id: '2', type: 'velocity', lift: 'Bench Press', value: 0.5, load_kg: 100, date: '', improvement: 0 },
+      { id: '1', type: 'e1rm' as const, lift: 'Bench Press', value: 100, date: '', improvement: 0 },
+      { id: '2', type: 'speed' as const, lift: 'Bench Press', value: 0.5, load_kg: 100, date: '', improvement: 0 },
     ];
 
     it('should detect new PR', () => {
-      const result = VBTLogic.checkPR(105, mockRecords as any, '1rm', 'Bench Press');
+      const result = VBTLogic.checkPR(105, mockRecords as any, 'e1rm', 'Bench Press');
       expect(result).not.toBeNull();
       expect(result?.value).toBe(105);
       expect(result?.improvement).toBe(5);
     });
 
     it('should not return PR if value is lower', () => {
-        const result = VBTLogic.checkPR(90, mockRecords as any, '1rm', 'Bench Press');
+        const result = VBTLogic.checkPR(90, mockRecords as any, 'e1rm', 'Bench Press');
         expect(result).toBeNull();
     });
 
     it('should return PR if no previous record exists', () => {
-        const result = VBTLogic.checkPR(100, [], '1rm', 'Squat');
+        const result = VBTLogic.checkPR(100, [], 'e1rm', 'Squat');
         expect(result).not.toBeNull();
         expect(result?.previous_value).toBeUndefined();
     });

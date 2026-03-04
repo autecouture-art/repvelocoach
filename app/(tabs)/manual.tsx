@@ -1,9 +1,4 @@
-/**
- * Manual Input Screen
- * 手動入力画面 - BLEセンサー未接続時のデータ手動入力
- */
-
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import {
   View,
   Text,
@@ -18,7 +13,9 @@ import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useRouter } from 'expo-router';
 import DatabaseService from '@/src/services/DatabaseService';
 import AICoachService from '@/src/services/AICoachService';
-import type { SetData } from '@/src/types/index';
+import ExerciseService from '@/src/services/ExerciseService';
+import { ExerciseSelectModal } from '@/src/components/ExerciseSelectModal';
+import type { SetData, Exercise } from '@/src/types/index';
 
 interface ManualSet {
   exercise: string;
@@ -32,6 +29,9 @@ export default function ManualInputScreen() {
   const insets = useSafeAreaInsets();
   const [exercise, setExercise] = useState('ベンチプレス');
   const [saving, setSaving] = useState(false);
+  const [masterExercises, setMasterExercises] = useState<Exercise[]>([]);
+  const [isModalVisible, setIsModalVisible] = useState(false);
+
   const [sets, setSets] = useState<ManualSet[]>([{
     exercise: 'ベンチプレス',
     loadKg: '',
@@ -39,7 +39,24 @@ export default function ManualInputScreen() {
     rpe: '',
   }]);
 
-  const exercises = ['ベンチプレス', 'スクワット', 'デッドリフト', 'オーバーヘッドプレス', 'バーベルロー'];
+  useEffect(() => {
+    loadExercises();
+  }, []);
+
+  const loadExercises = async () => {
+    const all = await ExerciseService.getAllExercises();
+    setMasterExercises(all);
+    // デフォルトの種目がマスタにあるか確認
+    if (all.length > 0 && !all.find(e => e.name === exercise)) {
+      setExercise(all[0].name);
+      setSets([{ exercise: all[0].name, loadKg: '', reps: '', rpe: '' }]);
+    }
+  };
+
+  // クイック選択用の主要種目（Big 3 + α）
+  const quickExercises = masterExercises.filter(e =>
+    ['squat', 'bench', 'deadlift', 'press', 'pull'].includes(e.category)
+  ).slice(0, 8);
 
   const addSet = () => {
     setSets([...sets, { exercise, loadKg: '', reps: '', rpe: '' }]);
@@ -133,19 +150,38 @@ export default function ManualInputScreen() {
       <View style={styles.section}>
         <Text style={styles.sectionTitle}>種目</Text>
         <ScrollView horizontal showsHorizontalScrollIndicator={false} style={styles.exerciseScroll}>
-          {exercises.map((ex) => (
+          {quickExercises.map((ex) => (
             <TouchableOpacity
-              key={ex}
-              style={[styles.exerciseButton, exercise === ex && styles.exerciseButtonActive]}
-              onPress={() => setExercise(ex)}
+              key={ex.id}
+              style={[styles.exerciseButton, exercise === ex.name && styles.exerciseButtonActive]}
+              onPress={() => {
+                setExercise(ex.name);
+                setSets(sets.map(s => ({ ...s, exercise: ex.name })));
+              }}
             >
-              <Text style={[styles.exerciseButtonText, exercise === ex && styles.exerciseButtonTextActive]}>
-                {ex}
+              <Text style={[styles.exerciseButtonText, exercise === ex.name && styles.exerciseButtonTextActive]}>
+                {ex.name}
               </Text>
             </TouchableOpacity>
           ))}
+          <TouchableOpacity
+            style={[styles.exerciseButton, styles.moreButton]}
+            onPress={() => setIsModalVisible(true)}
+          >
+            <Text style={styles.moreButtonText}>すべて見る...</Text>
+          </TouchableOpacity>
         </ScrollView>
       </View>
+
+      <ExerciseSelectModal
+        visible={isModalVisible}
+        onClose={() => setIsModalVisible(false)}
+        onSelect={(ex) => {
+          setExercise(ex.name);
+          setSets(sets.map(s => ({ ...s, exercise: ex.name })));
+          setIsModalVisible(false);
+        }}
+      />
 
       {/* セット入力 */}
       <View style={styles.section}>
@@ -261,6 +297,16 @@ const styles = StyleSheet.create({
   exerciseButtonActive: { backgroundColor: '#FF9800' },
   exerciseButtonText: { color: '#999', fontSize: 14 },
   exerciseButtonTextActive: { color: '#fff', fontWeight: '600' },
+  moreButton: {
+    backgroundColor: '#333',
+    borderWidth: 1,
+    borderColor: '#444',
+  },
+  moreButtonText: {
+    color: '#2196F3',
+    fontSize: 14,
+    fontWeight: '600',
+  },
   setCard: { backgroundColor: '#2a2a2a', borderRadius: 12, padding: 16, marginBottom: 12 },
   setCardHeader: {
     flexDirection: 'row', justifyContent: 'space-between',

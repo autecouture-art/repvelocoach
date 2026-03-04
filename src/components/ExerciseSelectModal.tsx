@@ -41,6 +41,7 @@ export function ExerciseSelectModal({
   const [editMinRom, setEditMinRom] = useState('');
   const [editMode, setEditMode] = useState<Exercise['rep_detection_mode']>('standard');
   const [editPause, setEditPause] = useState('');
+  const [editDescription, setEditDescription] = useState('');
 
   const categories = [
     { id: 'all', name: 'すべて' },
@@ -102,6 +103,7 @@ export function ExerciseSelectModal({
     setEditMinRom(exercise.min_rom_threshold?.toString() || '10.0');
     setEditMode(exercise.rep_detection_mode || 'standard');
     setEditPause(exercise.target_pause_ms?.toString() || '0');
+    setEditDescription(exercise.description || '');
   };
 
   const handleSaveEdit = async () => {
@@ -112,6 +114,7 @@ export function ExerciseSelectModal({
         min_rom_threshold: parseFloat(editMinRom) || 10.0,
         rep_detection_mode: editMode,
         target_pause_ms: parseInt(editPause) || 0,
+        description: editDescription.trim(),
       });
 
       setEditingExercise(null);
@@ -267,6 +270,16 @@ export function ExerciseSelectModal({
                     />
                   </>
                 )}
+
+                <Text style={styles.fieldLabel}>説明文 (AI分析用)</Text>
+                <TextInput
+                  style={[styles.nameInput, styles.descriptionInput]}
+                  value={editDescription}
+                  onChangeText={setEditDescription}
+                  placeholder="フォームの意識や注意点など（例: 膝を割って深くしゃがむ）"
+                  placeholderTextColor="#666"
+                  multiline
+                />
 
                 <View style={styles.addFormButtons}>
                   <TouchableOpacity
@@ -502,6 +515,10 @@ const styles = StyleSheet.create({
     fontSize: 16,
     color: '#fff',
     marginBottom: 16,
+  },
+  descriptionInput: {
+    minHeight: 80,
+    textAlignVertical: 'top',
   },
   addFormButtons: {
     flexDirection: 'row',

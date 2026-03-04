@@ -18,7 +18,7 @@ import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useRouter } from 'expo-router';
 import DatabaseService from '@/src/services/DatabaseService';
 import AICoachService from '@/src/services/AICoachService';
-import type { LVPData, SessionData, SetData } from '@/src/types/index';
+import type { LVPData, SessionData, SetData, Exercise } from '@/src/types/index';
 
 const { width } = Dimensions.get('window');
 
@@ -42,11 +42,26 @@ export default function GraphScreen() {
   const [recentSets, setRecentSets] = useState<SetData[]>([]);
   const [loading, setLoading] = useState(true);
   const [e1rmEstimate, setE1rmEstimate] = useState<number | null>(null);
-
-  const exercises = ['ベンチプレス', 'スクワット', 'デッドリフト', 'オーバーヘッドプレス', 'バーベルロー'];
+  const [exercisesList, setExercisesList] = useState<Exercise[]>([]);
 
   useEffect(() => {
-    loadData();
+    loadExercises();
+  }, []);
+
+  const loadExercises = async () => {
+    try {
+      const exs = await DatabaseService.getExercises();
+      setExercisesList(exs);
+      if (exs.length > 0 && (!selectedExercise || selectedExercise === 'ベンチプレス')) {
+        setSelectedExercise(exs[0].name);
+      }
+    } catch (e) {
+      console.error(e);
+    }
+  };
+
+  useEffect(() => {
+    if (selectedExercise) loadData();
   }, [selectedExercise]);
 
   const loadData = async () => {
@@ -210,14 +225,14 @@ export default function GraphScreen() {
       {/* 種目選択（LVP/trend タブ） */}
       {activeTab !== 'zones' && (
         <ScrollView horizontal showsHorizontalScrollIndicator={false} style={styles.exerciseScroll}>
-          {exercises.map((ex) => (
+          {exercisesList.map((ex) => (
             <TouchableOpacity
-              key={ex}
-              style={[styles.exerciseButton, selectedExercise === ex && styles.exerciseButtonActive]}
-              onPress={() => setSelectedExercise(ex)}
+              key={ex.id}
+              style={[styles.exerciseButton, selectedExercise === ex.name && styles.exerciseButtonActive]}
+              onPress={() => setSelectedExercise(ex.name)}
             >
-              <Text style={[styles.exerciseButtonText, selectedExercise === ex && styles.exerciseButtonTextActive]}>
-                {ex}
+              <Text style={[styles.exerciseButtonText, selectedExercise === ex.name && styles.exerciseButtonTextActive]}>
+                {ex.name}
               </Text>
             </TouchableOpacity>
           ))}

@@ -5,6 +5,7 @@
 
 import { Audio } from 'expo-av';
 import * as Speech from 'expo-speech';
+import { useTrainingStore } from '../store/trainingStore';
 
 class AudioService {
   private isEnabled: boolean = true;
@@ -36,14 +37,16 @@ class AudioService {
   /**
    * Speak text using Text-to-Speech
    */
-  async speak(text: string): Promise<void> {
+  async speak(text: string, language: string = 'ja-JP'): Promise<void> {
     if (!this.isEnabled) return;
 
     try {
+      const volume = useTrainingStore.getState().settings.audio_volume ?? 1.0;
       Speech.speak(text, {
-        language: 'en-US', // Default to English for numbers/tech terms
-        rate: 1.0,
+        language,
+        rate: 1.1, // 少し速めが聞き取りやすい
         pitch: 1.0,
+        volume,
       });
     } catch (error) {
       console.error('Speech error:', error);
@@ -51,11 +54,36 @@ class AudioService {
   }
 
   /**
+   * AIコーチによる指導（日本語）
+   */
+  async speakCoach(text: string): Promise<void> {
+    await this.speak(text, 'ja-JP');
+  }
+
+  /**
+   * レップ直後のフィードバック
+   */
+  async announceRepFeedback(velocity: number, isGood: boolean): Promise<void> {
+    if (!this.isEnabled) return;
+    const speedText = `${velocity.toFixed(2)}`;
+    const comment = isGood ? 'ナイススピード！' : 'もっと速く！';
+    await this.speak(`${speedText}。${comment}`);
+  }
+
+  /**
+   * セット中止勧告
+   */
+  async announceStopSet(reason: string): Promise<void> {
+    if (!this.isEnabled) return;
+    await this.speak(`警告。${reason}。セットを中止してください。`);
+  }
+
+  /**
    * Announce velocity
    */
   async announceVelocity(velocity: number): Promise<void> {
     const text = `${velocity.toFixed(2)}`;
-    await this.speak(text);
+    await this.speak(text, 'en-US'); // 数字は英語の方が聞き取りやすい場合がある
   }
 
   /**
@@ -63,9 +91,8 @@ class AudioService {
    */
   async playRepComplete(): Promise<void> {
     if (!this.isEnabled) return;
-    // TODO: Load and play a beep sound
-    // For now, just use a short tick
-     await this.speak('Tick'); 
+    // ビープ音の代わりに短い発話
+    await this.speak('アップ', 'ja-JP');
   }
 
   /**
@@ -73,7 +100,7 @@ class AudioService {
    */
   async announcePR(): Promise<void> {
     if (!this.isEnabled) return;
-    await this.speak('New Personal Record!');
+    await this.speak('自己ベスト更新！おめでとうございます！');
   }
 
   /**
@@ -81,7 +108,7 @@ class AudioService {
    */
   async announceVelocityLoss(): Promise<void> {
     if (!this.isEnabled) return;
-    await this.speak('Velocity Loss Threshold Reached');
+    await this.speak('速度低下を検知。セット終了。');
   }
 }
 

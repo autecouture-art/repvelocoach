@@ -92,8 +92,13 @@ const LVPScreen: React.FC<LVPScreenProps> = ({ navigation, route }) => {
         velocity: velocities.reduce((sum, v) => sum + v, 0) / velocities.length,
       }));
 
+      // Get exercise MVT
+      const exercises = await DatabaseService.getExercises();
+      const exercise = exercises.find(e => e.name === lift);
+      const mvt = exercise?.mvt;
+
       // Calculate LVP
-      const lvp = VBTCalculations.calculateLVP(points);
+      const lvp = VBTCalculations.calculateLVP(points, mvt);
       if (lvp) {
         lvp.lift = lift;
         setLvpData(lvp);

@@ -41,7 +41,7 @@ class HealthService {
         if (Platform.OS !== 'ios' || !this.isAuthorized) return null;
 
         const options: HealthInputOptions = {
-            unit: 'bpm', // 分あたりの心拍数
+            unit: 'count/min' as any,
             startDate: new Date(Date.now() - 1000 * 60 * 5).toISOString(), // 直近5分間
             endDate: new Date().toISOString(),
             ascending: false,

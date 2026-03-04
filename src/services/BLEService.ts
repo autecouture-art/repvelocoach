@@ -120,6 +120,17 @@ class BLEService {
     if (BleManager) {
       try {
         this.manager = new BleManager();
+
+        // Handle app restoration from background / BT state changes
+        this.manager.onStateChange((state: string) => {
+          this.debug(`Bluetooth state changed: ${state}`);
+          if (state === 'PoweredOn' && this.lastConnectedDeviceId) {
+            // Attempt to reconnect to known device
+            this.debug('BT powered on, trying to reconnect to last device...');
+            this.reconnect();
+          }
+        }, true);
+
       } catch (e) {
         console.warn('Failed to initialize BleManager:', e);
         // Fallback mock if initialization fails
@@ -425,6 +436,9 @@ class BLEService {
 
       this.callbacks.onConnectionStatusChanged?.(true);
       this.debug('Connected successfully');
+
+      // 接続監視開始
+      this.startHeartbeat();
 
       return true;
     } catch (error) {
@@ -816,11 +830,36 @@ class BLEService {
   }
 
   /**
+   * Start connection heartbeat monitor
+   */
+  private startHeartbeat(): void {
+    const isExpoGo = Constants.appOwnership === 'expo';
+    if (isExpoGo) return;
+
+    if (this.reconnectTimer) {
+      clearInterval(this.reconnectTimer);
+    }
+
+    this.reconnectTimer = setInterval(async () => {
+      // Monitor connection state periodically
+      const isConnected = await this.isConnected();
+      if (!isConnected && this.lastConnectedDeviceId) {
+        this.debug('Connection heartbeat lost. Attempting to reconnect...');
+        this.reconnect();
+      }
+    }, 10000); // Check every 10 seconds
+  }
+
+  /**
    * Clean up resources
    */
   destroy() {
     this.stopScan();
     this.stopNotifications();
+    if (this.reconnectTimer) {
+      clearInterval(this.reconnectTimer);
+      this.reconnectTimer = null;
+    }
     if (this.device) {
       this.disconnect();
     }

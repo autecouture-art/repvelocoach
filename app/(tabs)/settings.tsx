@@ -11,10 +11,20 @@ import {
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useRouter } from 'expo-router';
 import { IconSymbol } from '@/components/ui/icon-symbol';
+import { useTrainingStore } from '@/src/store/trainingStore';
+import type { AppSettings } from '@/src/types/index';
 
 export default function SettingsScreen() {
     const router = useRouter();
     const insets = useSafeAreaInsets();
+
+    const { settings, updateSettings } = useTrainingStore();
+    const currentVolume = settings.audio_volume ?? 1.0;
+
+    const handleVolumeChange = (delta: number) => {
+        const newVolume = Math.max(0, Math.min(1, currentVolume + delta));
+        updateSettings({ audio_volume: newVolume } as Partial<AppSettings>);
+    };
 
     const menuItems = [
         {
@@ -30,6 +40,13 @@ export default function SettingsScreen() {
             subtitle: '単位、通知、オーディオフィードバック',
             icon: 'slider.horizontal.3',
             onPress: () => Alert.alert('アプリ設定', '現在開発中です。単位や通知の設定がここに追加されます。'),
+        },
+        {
+            id: 'program-import',
+            title: 'プログラムインポート',
+            subtitle: 'Excelやテキストからメニューを一括読み込み',
+            icon: 'doc.text.magnifyingglass',
+            onPress: () => router.push('/import' as any),
         },
         {
             id: 'help',
@@ -64,6 +81,38 @@ export default function SettingsScreen() {
                             <IconSymbol size={20} name="chevron.right" color="#444" />
                         </TouchableOpacity>
                     ))}
+                </View>
+
+                <View style={styles.section}>
+                    <Text style={styles.sectionTitle}>音声フィードバック</Text>
+                    <View style={styles.settingCard}>
+                        <View style={styles.settingInfo}>
+                            <IconSymbol size={24} name="speaker.wave.2.fill" color="#4CAF50" />
+                            <View style={styles.settingTextContainer}>
+                                <Text style={styles.settingTitle}>ナビボイス音量</Text>
+                                <Text style={styles.settingSubtitle}>
+                                    現在の音量: {Math.round(currentVolume * 100)}%
+                                </Text>
+                            </View>
+                        </View>
+                        <View style={styles.volumeControls}>
+                            <TouchableOpacity
+                                style={styles.volButton}
+                                onPress={() => handleVolumeChange(-0.1)}
+                            >
+                                <IconSymbol size={20} name="minus" color="#fff" />
+                            </TouchableOpacity>
+                            <View style={styles.volDisplay}>
+                                <Text style={styles.volValue}>{Math.round(currentVolume * 100)}</Text>
+                            </View>
+                            <TouchableOpacity
+                                style={styles.volButton}
+                                onPress={() => handleVolumeChange(0.1)}
+                            >
+                                <IconSymbol size={20} name="plus" color="#fff" />
+                            </TouchableOpacity>
+                        </View>
+                    </View>
                 </View>
 
                 <View style={styles.footer}>
@@ -138,5 +187,61 @@ const styles = StyleSheet.create({
     copyrightText: {
         fontSize: 12,
         color: '#444',
+    },
+    sectionTitle: {
+        fontSize: 18,
+        fontWeight: 'bold',
+        color: '#fff',
+        marginBottom: 16,
+        marginLeft: 8,
+    },
+    settingCard: {
+        backgroundColor: '#2a2a2a',
+        borderRadius: 16,
+        padding: 16,
+    },
+    settingInfo: {
+        flexDirection: 'row',
+        alignItems: 'center',
+        marginBottom: 16,
+    },
+    settingTextContainer: {
+        marginLeft: 12,
+        flex: 1,
+    },
+    settingTitle: {
+        fontSize: 16,
+        fontWeight: '600',
+        color: '#fff',
+        marginBottom: 2,
+    },
+    settingSubtitle: {
+        fontSize: 13,
+        color: '#999',
+    },
+    volumeControls: {
+        flexDirection: 'row',
+        justifyContent: 'center',
+        alignItems: 'center',
+        backgroundColor: '#1a1a1a',
+        borderRadius: 12,
+        padding: 8,
+    },
+    volButton: {
+        width: 44,
+        height: 44,
+        borderRadius: 22,
+        backgroundColor: '#333',
+        justifyContent: 'center',
+        alignItems: 'center',
+    },
+    volDisplay: {
+        width: 60,
+        alignItems: 'center',
+    },
+    volValue: {
+        fontSize: 20,
+        fontWeight: 'bold',
+        color: '#fff',
     },
 });

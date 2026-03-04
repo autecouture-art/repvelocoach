@@ -8,6 +8,7 @@ import { useTrainingStore } from '../store/trainingStore';
 import BLEService from '../services/BLEService';
 import AudioService from '../services/AudioService';
 import { VBTLogic } from '../services/VBTLogic';
+import VBTCalculations, { getVelocityAt1RM } from '../utils/VBTCalculations';
 import DatabaseService from '../services/DatabaseService';
 import AICoachService from '../services/AICoachService';
 import HealthService from '../services/HealthService';
@@ -36,6 +37,7 @@ export const useSessionLogic = (onPRDetected?: PRCallback) => {
     sessionHRPoints,
     restStartTime,
     setStartTimeStamp,
+    pauseReason,
 
     // Actions
     setConnectionStatus,
@@ -45,36 +47,247 @@ export const useSessionLogic = (onPRDetected?: PRCallback) => {
     resetSetData,
     updateHeartRate,
     startRest,
+    updateVBTIntelligence,
+    removeRepFromHistory,
+    markRepFailedInHistory,
+    updateSetHistory,
+    isPaused,
+    setProposedMVT,
+    startSet,
+    resumeSet,
   } = useTrainingStore();
 
   const isMounted = useRef(true);
   const lastNotifiedRestTime = useRef<number | null>(null);
+  const isFinishingSet = useRef(false); // ガードフラグ
+
+  // --- Setup finishSet for reuse ---
+
+  const finishSet = useCallback(async (repsOverride?: RepData[]) => {
+    // ガード処理: 既に実行中の場合は何もしない
+    if (isFinishingSet.current) {
+      console.log('[finishSet] Already executing, skipping...');
+      return;
+    }
+
+    // セッションがアクティブでない場合は何もしない
+    if (!isSessionActive) {
+      console.log('[finishSet] Session not active, skipping...');
+      return;
+    }
+
+    // 保存対象レップを決定（明示的に指定された場合はそれを使う）
+    const repsToSave = repsOverride ?? repHistory;
+
+    // レップ履歴がない場合は何もしない
+    if (repsToSave.length === 0) {
+      console.log('[finishSet] No reps to save, skipping...');
+      return;
+    }
+
+    // フラグを立てて多重実行を防止
+    isFinishingSet.current = true;
+
+    try {
+      // 有効なレップのみを抽出（除外・失敗レップを除く）
+      const validReps = repsToSave.filter(r => !r.is_excluded && !r.is_failed && r.is_valid_rep);
+
+      // 有効なレップがない場合は警告して終了
+      if (validReps.length === 0) {
+        console.warn('[finishSet] No valid reps to save, skipping...');
+        return;
+      }
+
+      // セット平均を計算
+      const avgVel = validReps.reduce((sum, r) => sum + (r.mean_velocity ?? 0), 0) / validReps.length;
+      const peakVel = Math.max(...validReps.map(r => r.peak_velocity ?? 0));
+
+      // Velocity Loss: セット内最高速度 vs 平均速度 (calculateSetVelocityLoss使用)
+      const vLoss = VBTCalculations.calculateSetVelocityLoss(validReps) ?? 0;
+
+      // e1RMは有効レップ数(validReps.length)を基準に計算（reps <= 0の場合はnull）
+      const e1rm = VBTLogic.calculateE1RM(currentLoad, validReps.length) ?? null;
+
+      // 心拍数統計の計算
+      const avgHr = setHRPoints.length > 0 ? setHRPoints.reduce((s, x) => s + x, 0) / setHRPoints.length : currentHeartRate || undefined;
+      const peakHr = setHRPoints.length > 0 ? Math.max(...setHRPoints) : currentHeartRate || undefined;
+      const endTimestamp = new Date().toISOString();
+      // Rest duration: time from previous set end (restStartTime) to this set start (setStartTimeStamp)
+      const restDuration = (restStartTime && setStartTimeStamp) ?
+        (new Date(setStartTimeStamp).getTime() - restStartTime) / 1000 :
+        undefined;
+
+      const newSet: SetData = {
+        session_id: currentSession?.session_id || 'offline',
+        lift: currentLift || 'Unknown',
+        set_index: currentSetIndex,
+        load_kg: currentLoad,
+        reps: validReps.length,
+        device_type: 'OVR Velocity',
+        set_type: 'normal',
+        avg_velocity: avgVel,
+        velocity_loss: vLoss,
+        e1rm: e1rm,
+        timestamp: endTimestamp,
+        start_timestamp: setStartTimeStamp || undefined,
+        end_timestamp: endTimestamp,
+        rest_duration_s: restDuration,
+        avg_hr: avgHr,
+        peak_hr: peakHr,
+      };
+
+      // Storeに保存（ローカル状態遷移を確実に完了させる）
+      completeSet(newSet);
+      startRest(); // 休憩タイマー開始
+
+      try {
+        // === VBT Intelligence 更新 ===
+        const updatedHistory = [...setHistory, newSet];
+        const cnsBattery = VBTCalculations.calculateCNSFatigueScore(updatedHistory);
+
+        // 次セットの推奨重量 (Adaptive Load Engine™)
+        let suggestedLoad = currentLoad;
+        if (avgVel) {
+          const suggestion = AICoachService.suggestNextLoad(
+            avgVel,
+            settings.target_training_phase as any || 'strength',
+            currentLoad
+          );
+          suggestedLoad = suggestion.suggestedLoad;
+        }
+
+        updateVBTIntelligence({
+          cnsBattery,
+          suggestedLoad
+        });
+
+        // DBに保存 (Async)
+        if (currentSession?.session_id) {
+          await DatabaseService.insertSet(newSet);
+          // repsOverrideが指定された場合はそれを使う（自動終了時の最終レップ含む）
+          for (const rep of repsToSave) {
+            await DatabaseService.insertRep(rep);
+          }
+
+          // === PR検知 ===
+          const today = new Date().toISOString().split('T')[0];
+          const liftValue = currentLift || 'Unknown';
+
+          // 1. e1RM PR チェック
+          if (e1rm) {
+            const bestE1RM = await DatabaseService.getBestPR(liftValue, 'e1rm');
+            if (!bestE1RM || e1rm > bestE1RM.value) {
+              const prRecord: PRRecord = {
+                id: `pr_e1rm_${Date.now()}`,
+                type: 'e1rm',
+                lift: liftValue,
+                value: e1rm,
+                load_kg: currentLoad,
+                reps: validReps.length,
+                date: today,
+                previous_value: bestE1RM?.value,
+                improvement: bestE1RM ? e1rm - bestE1RM.value : e1rm,
+              };
+              await DatabaseService.insertPRRecord(prRecord);
+              onPRDetected?.(prRecord);
+              AudioService.announcePR();
+            }
+          }
+
+          // 2. 最高速度 PR チェック
+          if (peakVel) {
+            const bestSpeed = await DatabaseService.getBestPR(liftValue, 'speed');
+            if (!bestSpeed || peakVel > bestSpeed.value) {
+              const prRecord: PRRecord = {
+                id: `pr_speed_${Date.now()}`,
+                type: 'speed',
+                lift: liftValue,
+                value: peakVel,
+                load_kg: currentLoad,
+                date: today,
+                previous_value: bestSpeed?.value,
+                improvement: bestSpeed ? peakVel - bestSpeed.value : peakVel,
+              };
+              await DatabaseService.insertPRRecord(prRecord);
+              onPRDetected?.(prRecord);
+            }
+          }
+
+          // === LVP自動更新 ===
+          // 十分なデータポイント（3セット以上）がある場合は線形回帰でLVPを更新
+          const updatedSetsForLVP = updatedHistory.filter(s => s.avg_velocity && s.load_kg);
+          if (updatedSetsForLVP.length >= 3) {
+            const lvp = VBTCalculations.calculateLVP(updatedSetsForLVP.map(s => ({
+              load: s.load_kg,
+              velocity: s.avg_velocity!
+            })), currentExercise?.mvt);
+
+            if (lvp && lvp.r_squared > 0.5) {
+              await DatabaseService.saveLVPProfile({
+                ...lvp,
+                lift: liftValue
+              });
+            }
+          }
+        }
+        AudioService.speakCoach('セット完了。お疲れ様でした。');
+      } catch (e) {
+        console.error('セット永続化失敗:', e);
+      }
+    } catch (e) {
+      console.error('セット全体の処理失敗:', e);
+    } finally {
+      // ガードフラグをクリア（必ず実行）
+      isFinishingSet.current = false;
+    }
+  }, [
+    repHistory, currentLoad, currentHeartRate, setHRPoints, restStartTime,
+    currentSession, currentLift, currentSetIndex, setStartTimeStamp,
+    completeSet, setHistory, settings, updateVBTIntelligence, startRest, onPRDetected,
+    isSessionActive, startSet, currentExercise
+  ]);
 
   // --- BLE Event Handlers ---
 
-  const handleDataReceived = useCallback((data: RepVeloData) => {
-    // 1. Update Live Data in Store (for UI)
-    setLiveData(data);
-
-    // 2. Audio Feedback (Velocity)
-    if (settings.enable_audio_feedback) {
-      AudioService.announceVelocity(data.mean_velocity);
+  const handleDataReceived = useCallback(async (data: RepVeloData) => {
+    // 1. Finish Set Guard - finishSet実行中（DB保存中）はBLE入力を完全に破棄
+    if (isFinishingSet.current) {
+      console.log('[handleDataReceived] Finishing set in progress, discarding BLE input to prevent duplicate reps');
+      return;
     }
+
+    // 2. Pause Gate - 休憩中(isPaused)はBLE入力を完全に破棄
+    if (isPaused) {
+      console.log('[handleDataReceived] Paused, discarding BLE input');
+      return;
+    }
+
+    // 2. Update Live Data in Store (for UI)
+    setLiveData(data);
 
     // 3. Process Rep Logic
     const minRom = currentExercise?.min_rom_threshold ?? 10.0;
     const isValidRep = data.rom_cm > minRom;
 
     if (isValidRep) {
+      // 3. Audio Feedback (Velocity Sense™)
+      if (settings.enable_audio_feedback) {
+        // レップごとの即時フィードバック
+        const isGood = data.mean_velocity >= 0.5; // 暫定基準、実際にはLVPと比較
+        AudioService.announceRepFeedback(data.mean_velocity, isGood);
+      }
+
       // 4. Calculate Derived Metrics
-      // Ensure target velocity is available if doing % loss, else use first rep
-      const targetVel = (repHistory.length > 0 ? repHistory[0].mean_velocity : data.mean_velocity) as number;
-      const vLoss = VBTLogic.calculateVelocityLoss(targetVel, data.mean_velocity);
+      const firstRepVel = repHistory.length > 0 ? repHistory[0].mean_velocity : data.mean_velocity;
+      const vLoss = VBTLogic.calculateVelocityLoss(firstRepVel as number, data.mean_velocity);
 
       // Power Calculation
       const power = VBTLogic.calculatePower(currentLoad, data.mean_velocity);
 
+      const isShort = currentExercise ? VBTCalculations.isShortROM(data.rom_cm, currentExercise) : false;
+
       const newRep: RepData = {
+        id: `${Date.now().toString()}-${Math.random().toString(36).substring(2, 15)}`,
         session_id: currentSession?.session_id || 'offline',
         lift: currentLift || 'Unknown',
         set_index: currentSetIndex,
@@ -88,6 +301,7 @@ export const useSessionLogic = (onPRDetected?: PRCallback) => {
         device_type: 'OVR Velocity',
         timestamp: new Date().toISOString(),
         is_valid_rep: true,
+        is_short_rom: isShort,
         set_type: 'normal',
         hr_bpm: currentHeartRate || undefined,
       };
@@ -95,11 +309,51 @@ export const useSessionLogic = (onPRDetected?: PRCallback) => {
       // 5. Add to Store
       addRep(newRep);
 
-      // 6. Check Velocity Loss Threshold
-      if (vLoss >= settings.velocity_loss_threshold) {
-        if (settings.enable_audio_feedback) {
-          AudioService.announceVelocityLoss();
+      // 6. Intelligent 1RM Estimator (初動レップで計算)
+      if (repHistory.length === 0 && data.mean_velocity > 0) {
+        const lvp = await DatabaseService.getLVPProfile(currentLift || '');
+        if (lvp && lvp.slope < 0) {
+          // MVT基準のbaseline 1RMを計算（getVelocityAt1RM経由でmvtを優先）
+          const velocityAt1RM = getVelocityAt1RM(lvp);
+          const baseline1RM = (velocityAt1RM - lvp.intercept) / lvp.slope;
+
+          // ガード条件1: ウォームアップが軽すぎる場合（例: 30%未満）は予測のブレが大きいため除外
+          if (currentLoad >= baseline1RM * 0.3) {
+            const e1rm = VBTCalculations.estimateCurrentDay1RM(currentLoad, data.mean_velocity, lvp);
+
+            // ガード条件2: 予測値が異常に変動した場合（例: ベースラインの±30%以上）は外れ値として無視
+            const diffRatio = Math.abs(e1rm - baseline1RM) / baseline1RM;
+            if (diffRatio <= 0.3) {
+              // 信頼度の計算: R² と変動幅に基づく
+              let confidence: 'high' | 'medium' | 'low' = 'low';
+              if (lvp.r_squared >= 0.8 && diffRatio <= 0.1) {
+                confidence = 'high';
+              } else if (lvp.r_squared >= 0.6 && diffRatio <= 0.2) {
+                confidence = 'medium';
+              }
+
+              updateVBTIntelligence({
+                estimated1RM: e1rm,
+                estimated1RM_confidence: confidence
+              });
+            }
+          }
         }
+      }
+
+      // 7. Velocity Loss 警告 (最新論文基準: S:20%, B:10%, D:5%)
+      const paperVL = AICoachService.getVlThresholdByExercise(currentExercise?.category || '');
+      const currentVLThreshold = settings.velocity_loss_threshold || paperVL;
+
+      if (vLoss >= currentVLThreshold) {
+        if (settings.enable_audio_feedback) {
+          const reason = `速度低下率${vLoss.toFixed(1)}%が閾値(${currentVLThreshold}%)を超えました`;
+          AudioService.announceStopSet(reason);
+        }
+
+        // 自動フィニッシュセット - 新しいレップを明示的に渡して最終レップ欠落を防止
+        const nextReps = [...repHistory, newRep];
+        finishSet(nextReps);
       }
     }
   }, [
@@ -113,6 +367,9 @@ export const useSessionLogic = (onPRDetected?: PRCallback) => {
     setLiveData,
     addRep,
     currentHeartRate,
+    updateVBTIntelligence,
+    isPaused,
+    finishSet,
   ]);
 
   const handleConnectionChanged = useCallback((connected: boolean) => {
@@ -169,7 +426,8 @@ export const useSessionLogic = (onPRDetected?: PRCallback) => {
 
   // --- Rest Timing & Ready Notification ---
   useEffect(() => {
-    if (restStartTime && currentHeartRate) {
+    // 休憩状態（isPaused && pauseReason === 'rest'）でのみready通知を発行
+    if (isPaused && pauseReason === 'rest' && restStartTime && currentHeartRate) {
       // 重複通知防止: 既に現在の休憩時間で通知済みなら何もしない
       if (lastNotifiedRestTime.current === restStartTime) return;
 
@@ -184,152 +442,124 @@ export const useSessionLogic = (onPRDetected?: PRCallback) => {
         AudioService.speak('You are ready for the next set');
       }
     }
-  }, [currentHeartRate, restStartTime, setHistory]);
+  }, [isPaused, pauseReason, currentHeartRate, restStartTime, setHistory]);
 
 
   // --- User Actions ---
 
-  const finishSet = async () => {
-    if (repHistory.length === 0) {
-      return;
-    }
+  // --- 1RM & MVT Intelligence ---
 
-    // セット平均を計算
-    const avgVel = repHistory.reduce((sum, r) => sum + (r.mean_velocity ?? 0), 0) / repHistory.length;
-    const peakVel = Math.max(...repHistory.map(r => r.peak_velocity ?? 0));
-    const vLoss = repHistory.length > 1
-      ? VBTLogic.calculateVelocityLoss((repHistory[0].mean_velocity ?? 0), (repHistory[repHistory.length - 1].mean_velocity ?? 0))
-      : 0;
+  const calculateAndProposeMVT = async () => {
+    if (!currentLift) return;
 
-    const e1rm = VBTLogic.calculateE1RM(currentLoad, repHistory.length);
+    // 直近セッションから高負荷レップを取得
+    const highLoadReps = await DatabaseService.getHighLoadRepsForMVT(currentLift);
 
-    // 心拍数統計の計算
-    const avgHr = setHRPoints.length > 0 ? setHRPoints.reduce((s, x) => s + x, 0) / setHRPoints.length : currentHeartRate || undefined;
-    const peakHr = setHRPoints.length > 0 ? Math.max(...setHRPoints) : currentHeartRate || undefined;
-    const endTimestamp = new Date().toISOString();
-    const restDuration = restStartTime ? (Date.now() - restStartTime) / 1000 : undefined;
+    // MVTの提案値を計算
+    const proposed = VBTCalculations.proposeNewMVT(highLoadReps);
 
-    const newSet: SetData = {
-      session_id: currentSession?.session_id || 'offline',
-      lift: currentLift || 'Unknown',
-      set_index: currentSetIndex,
-      load_kg: currentLoad,
-      reps: repHistory.length,
-      device_type: 'OVR Velocity',
-      set_type: 'normal',
-      avg_velocity: avgVel,
-      velocity_loss: vLoss,
-      e1rm: e1rm,
-      timestamp: endTimestamp,
-      start_timestamp: setStartTimeStamp || undefined,
-      end_timestamp: endTimestamp,
-      rest_duration_s: restDuration,
-      avg_hr: avgHr,
-      peak_hr: peakHr,
-    };
+    if (proposed !== null) {
+      // 既存MVTと比較し、差があればストアにセットする
+      const existingLvp = await DatabaseService.getLVPProfile(currentLift);
+      const currentMvr = existingLvp?.mvt || 0.2;
 
-    // Storeに保存
-    completeSet(newSet);
-
-    // DBに保存 (Async)
-    try {
-      if (currentSession?.session_id) {
-        await DatabaseService.insertSet(newSet);
-        for (const rep of repHistory) {
-          await DatabaseService.insertRep(rep);
-        }
-
-        // === PR検知 ===
-        const today = new Date().toISOString().split('T')[0];
-        const lift = currentLift || 'Unknown';
-
-        // 1. e1RM PR チェック
-        if (e1rm) {
-          const bestE1RM = await DatabaseService.getBestPR(lift, 'e1rm');
-          if (!bestE1RM || e1rm > bestE1RM.value) {
-            const prRecord: PRRecord = {
-              id: `pr_e1rm_${Date.now()}`,
-              type: 'e1rm',
-              lift,
-              value: e1rm,
-              load_kg: currentLoad,
-              reps: repHistory.length,
-              date: today,
-              previous_value: bestE1RM?.value,
-              improvement: bestE1RM ? e1rm - bestE1RM.value : e1rm,
-            };
-            await DatabaseService.insertPRRecord(prRecord);
-            onPRDetected?.(prRecord);
-            AudioService.speak('New Personal Record!');
-          }
-        }
-
-        // 2. 最高速度 PR チェック
-        if (peakVel) {
-          const bestSpeed = await DatabaseService.getBestPR(lift, 'speed');
-          if (!bestSpeed || peakVel > bestSpeed.value) {
-            const prRecord: PRRecord = {
-              id: `pr_speed_${Date.now()}`,
-              type: 'speed',
-              lift,
-              value: peakVel,
-              load_kg: currentLoad,
-              date: today,
-              previous_value: bestSpeed?.value,
-              improvement: bestSpeed ? peakVel - bestSpeed.value : peakVel,
-            };
-            await DatabaseService.insertPRRecord(prRecord);
-            onPRDetected?.(prRecord);
-          }
-        }
-
-        // === LVP自動更新 ===
-        // 十分なデータポイント（3セット以上）がある場合は線形回帰でLVPを更新
-        const updatedSets = [...setHistory, newSet].filter(s => s.avg_velocity && s.load_kg);
-        if (updatedSets.length >= 3) {
-          // 最小二乗法で線形回帰
-          const n = updatedSets.length;
-          const sumX = updatedSets.reduce((s, d) => s + d.load_kg, 0);
-          const sumY = updatedSets.reduce((s, d) => s + (d.avg_velocity ?? 0), 0);
-          const sumXY = updatedSets.reduce((s, d) => s + d.load_kg * (d.avg_velocity ?? 0), 0);
-          const sumX2 = updatedSets.reduce((s, d) => s + d.load_kg * d.load_kg, 0);
-
-          const slope = (n * sumXY - sumX * sumY) / (n * sumX2 - sumX * sumX);
-          const intercept = (sumY - slope * sumX) / n;
-
-          // R²を計算
-          const meanY = sumY / n;
-          const ssTot = updatedSets.reduce((s, d) => s + Math.pow((d.avg_velocity ?? 0) - meanY, 2), 0);
-          const ssRes = updatedSets.reduce((s, d) => {
-            const predicted = slope * d.load_kg + intercept;
-            return s + Math.pow((d.avg_velocity ?? 0) - predicted, 2);
-          }, 0);
-          const rSquared = ssTot > 0 ? 1 - ssRes / ssTot : 0;
-
-          if (rSquared > 0.5) {  // R²が0.5以上なら信頼できるとして更新
-            await DatabaseService.saveLVPProfile({
-              lift,
-              vmax: Math.max(intercept, 0),
-              v1rm: Math.max(slope * 100 + intercept, 0.1), // 100kgでの推定速度
-              slope,
-              intercept,
-              r_squared: rSquared,
-              last_updated: new Date().toISOString(),
-            });
-          }
-        }
+      // 差分が微小（0.01未満）でない限り、積極的に提案する（以前は0.02）
+      if (Math.abs(proposed - currentMvr) >= 0.01) {
+        setProposedMVT(proposed);
+      } else {
+        // 差が微小な場合は、提案をクリアして現在の値が最適であることを示す
+        setProposedMVT(null);
       }
-    } catch (e) {
-      console.error('セット保存失敗:', e);
+    } else {
+      setProposedMVT(null);
+    }
+  };
+
+  const handleExcludeRep = async (repId: string, reason: string) => {
+    // 1. Mark in DB
+    await DatabaseService.excludeRep(repId, reason);
+
+    // 2. Locate the rep by id (with fallback to rep_index for backward compatibility)
+    const targetRep = repHistory.find(r => r.id === repId)
+      || (await DatabaseService.getRepsForSession(currentSession?.session_id || '')).find(r => r.id === repId);
+
+    if (!targetRep) return;
+    const setIndexToRecalc = targetRep.set_index;
+    const targetLift = targetRep.lift; // Use the rep's actual lift, not currentLift
+
+    // 3. Mark in Current Rep History if it's the active set
+    if (setIndexToRecalc === currentSetIndex) {
+      // Find the rep by id in current history and mark it as excluded
+      removeRepFromHistory(repId);
     }
 
-    startRest(); // 休憩タイマー開始
-    AudioService.speak('Set Complete');
+    // 4. Recalculate and update using unified function
+    if (currentSession?.session_id) {
+      await DatabaseService.recalculateAndUpdateSet(
+        currentSession.session_id,
+        targetLift,
+        setIndexToRecalc
+      );
+
+      // 5. Update Set in Store (get updated metrics from DB)
+      const metrics = await DatabaseService.recalculateSetMetrics(
+        currentSession.session_id,
+        targetLift,
+        setIndexToRecalc
+      );
+
+      if (metrics) {
+        updateSetHistory(setIndexToRecalc, metrics);
+      }
+    }
+  };
+
+  const handleMarkFailedRep = async (repId: string, isFailed: boolean) => {
+    // 1. Mark in DB
+    await DatabaseService.markRepAsFailed(repId, isFailed);
+
+    // 2. Locate the rep by id (with fallback to rep_index for backward compatibility)
+    const targetRep = repHistory.find(r => r.id === repId)
+      || (await DatabaseService.getRepsForSession(currentSession?.session_id || '')).find(r => r.id === repId);
+
+    if (!targetRep) return;
+    const setIndexToRecalc = targetRep.set_index;
+    const targetLift = targetRep.lift; // Use the rep's actual lift, not currentLift
+
+    // 3. Mark in Current Rep History if it's the active set
+    if (setIndexToRecalc === currentSetIndex) {
+      // Find the rep by id in current history and mark it as failed
+      markRepFailedInHistory(repId, isFailed);
+    }
+
+    // 4. Recalculate and update using unified function
+    if (currentSession?.session_id) {
+      await DatabaseService.recalculateAndUpdateSet(
+        currentSession.session_id,
+        targetLift,
+        setIndexToRecalc
+      );
+
+      // 5. Update Set in Store (get updated metrics from DB)
+      const metrics = await DatabaseService.recalculateSetMetrics(
+        currentSession.session_id,
+        targetLift,
+        setIndexToRecalc
+      );
+
+      if (metrics) {
+        updateSetHistory(setIndexToRecalc, metrics);
+      }
+    }
   };
 
   return {
     finishSet,
-    // Expose store state for UI to consume directly if needed, 
-    // but preferably UI uses useTrainingStore() directly for reading state.
+    handleDataReceived,
+    startSet,
+    resumeSet,
+    handleExcludeRep,
+    handleMarkFailedRep,
+    calculateAndProposeMVT,
   };
 };

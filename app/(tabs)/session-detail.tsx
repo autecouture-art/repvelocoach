@@ -25,7 +25,9 @@ import * as Clipboard from 'expo-clipboard';
 import DatabaseService from '@/src/services/DatabaseService';
 import AICoachService from '@/src/services/AICoachService';
 import { formatSessionForAI } from '@/src/utils/formatDataForAI';
-import type { SessionData, SetData, RepData } from '@/src/types/index';
+import { RepVelocityChart } from '@/src/components/RepVelocityChart';
+import { RepDetailModal } from '@/src/components/RepDetailModal';
+import type { SessionData, SetData, RepData, PRRecord, LVPData } from '@/src/types/index';
 
 export default function SessionDetailScreen() {
     const router = useRouter();
@@ -34,6 +36,7 @@ export default function SessionDetailScreen() {
 
     const [session, setSession] = useState<SessionData | null>(null);
     const [sets, setSets] = useState<SetData[]>([]);
+    const [allReps, setAllReps] = useState<RepData[]>([]);
     const [loading, setLoading] = useState(true);
 
     // 編集状態
@@ -44,18 +47,24 @@ export default function SessionDetailScreen() {
     const [editRpe, setEditRpe] = useState('');
     const [editSetNotes, setEditSetNotes] = useState('');
 
+    // レップ詳細モーダルの表示状態
+    const [repDetailVisible, setRepDetailVisible] = useState(false);
+    const [selectedSetIndex, setSelectedSetIndex] = useState(1);
+
     useEffect(() => {
         if (session_id) loadSessionDetail(session_id as string);
     }, [session_id]);
 
     const loadSessionDetail = async (id: string) => {
         try {
-            const [sessionData, setsData] = await Promise.all([
+            const [sessionData, setsData, repsData] = await Promise.all([
                 DatabaseService.getSession(id),
                 DatabaseService.getSetsForSession(id),
+                DatabaseService.getRepsForSession(id),
             ]);
             setSession(sessionData);
             setSets(setsData);
+            setAllReps(repsData);
             setSessionNotes(sessionData?.notes || '');
         } catch (error) {
             console.error('セッション詳細読み込み失敗:', error);
@@ -152,12 +161,55 @@ export default function SessionDetailScreen() {
                 load_kg: parseFloat(editLoad) || editingSet.load_kg,
                 rpe: editRpe ? parseFloat(editRpe) : undefined,
                 notes: editSetNotes,
+                lift: editingSet.lift, // liftを追加して種目切り替え時の更新ミスを防止
             });
             await DatabaseService.recalcSessionVolume(session.session_id);
             setEditingSet(null);
             await reload();
         } catch {
             Alert.alert('エラー', '保存に失敗しました');
+        }
+    };
+
+    // --- レップ除外処理 ---
+    const handleExcludeRep = async (repId: string, reason: string) => {
+        if (!session) return;
+        try {
+            await DatabaseService.excludeRep(repId, reason);
+
+            // 該当レップが属するセットの再集計（統一関数を使用）
+            const targetRep = allReps.find(r => r.id === repId);
+            if (targetRep) {
+                await DatabaseService.recalculateAndUpdateSet(
+                    session.session_id,
+                    targetRep.lift,
+                    targetRep.set_index
+                );
+            }
+            await reload();
+        } catch {
+            Alert.alert('エラー', 'レップの除外に失敗しました');
+        }
+    };
+
+    // --- レップ失敗マーク処理 ---
+    const handleMarkFailedRep = async (repId: string, isFailed: boolean) => {
+        if (!session) return;
+        try {
+            await DatabaseService.markRepAsFailed(repId, isFailed);
+
+            // 該当レップが属するセットの再集計（統一関数を使用）
+            const targetRep = allReps.find(r => r.id === repId);
+            if (targetRep) {
+                await DatabaseService.recalculateAndUpdateSet(
+                    session.session_id,
+                    targetRep.lift,
+                    targetRep.set_index
+                );
+            }
+            await reload();
+        } catch {
+            Alert.alert('エラー', 'レップの状態変更に失敗しました');
         }
     };
 
@@ -288,8 +340,11 @@ export default function SessionDetailScreen() {
                                 <TouchableOpacity
                                     key={idx}
                                     style={[styles.setCard, zone && { borderLeftColor: zone.color }]}
-                                    onPress={() => openEditSet(setData)}
-                                    onLongPress={() => confirmDeleteSet(setData)}
+                                    onPress={() => {
+                                        setSelectedSetIndex(setData.set_index);
+                                        setRepDetailVisible(true);
+                                    }}
+                                    onLongPress={() => openEditSet(setData)}
                                     activeOpacity={0.7}
                                 >
                                     <View style={styles.setHeader}>
@@ -340,12 +395,29 @@ export default function SessionDetailScreen() {
                                     {setData.notes ? (
                                         <Text style={styles.setNotesText}>📝 {setData.notes}</Text>
                                     ) : null}
+
+                                    {/* チャート */}
+                                    {allReps.length > 0 && allReps.some(r => r.set_index === setData.set_index) && (
+                                        <View style={{ marginTop: 12, marginHorizontal: -16 }}>
+                                            <RepVelocityChart reps={allReps} setIndex={setData.set_index} />
+                                        </View>
+                                    )}
                                 </TouchableOpacity>
                             );
                         })
                     )}
                 </View>
             </ScrollView>
+
+            {/* レップ詳細モーダルを追加 */}
+            <RepDetailModal
+                visible={repDetailVisible}
+                reps={allReps}
+                setIndex={selectedSetIndex}
+                onClose={() => setRepDetailVisible(false)}
+                onExcludeRep={handleExcludeRep}
+                onMarkFailedRep={handleMarkFailedRep}
+            />
 
             {/* セット編集モーダル */}
             <Modal

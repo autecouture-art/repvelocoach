@@ -3,28 +3,38 @@
  * The "Brain" of the application - handles all VBT calculations and analytics
  */
 
-import type { RepVeloData, PRRecord } from '../types/index';
+import type { RepVeloData, PRRecord, PRType } from '../types/index';
 
 export class VBTLogic {
   /**
-   * Calculate Velocity Loss
+   * Calculate Rep-to-Rep Velocity Loss
+   * Calculates velocity degradation between two consecutive reps or from first rep to current rep
    * @param targetVelocity Target velocity (m/s) or Velocity of first rep
    * @param currentVelocity Current rep velocity (m/s)
    * @returns Velocity Loss percentage (0-100)
    */
-  static calculateVelocityLoss(targetVelocity: number, currentVelocity: number): number {
+  static calculateRepToRepVelocityLoss(targetVelocity: number, currentVelocity: number): number {
     if (targetVelocity <= 0) return 0;
     const loss = ((targetVelocity - currentVelocity) / targetVelocity) * 100;
     return Math.max(0, parseFloat(loss.toFixed(1)));
   }
 
   /**
+   * @deprecated Use calculateRepToRepVelocityLoss for clarity
+   * Calculate Velocity Loss (alias for backward compatibility)
+   */
+  static calculateVelocityLoss(targetVelocity: number, currentVelocity: number): number {
+    return this.calculateRepToRepVelocityLoss(targetVelocity, currentVelocity);
+  }
+
+  /**
    * Calculate Estimated 1RM (e1RM) using Epley Formula
    * @param load Load in kg
    * @param reps Number of reps
-   * @returns Estimated 1RM in kg
+   * @returns Estimated 1RM in kg, or null if reps <= 0
    */
-  static calculateE1RM(load: number, reps: number): number {
+  static calculateE1RM(load: number, reps: number): number | null {
+    if (reps <= 0 || load <= 0) return null;
     if (reps === 1) return load;
     // Epley Formula: 1RM = Weight * (1 + Reps/30)
     const e1rm = load * (1 + reps / 30);
@@ -51,18 +61,18 @@ export class VBTLogic {
    * Check for Personal Record (PR)
    * @param currentVal Current value (load, velocity, power)
    * @param prRecords History of PR records
-   * @param type PR Type ('1rm', 'volume', 'velocity', 'power')
+   * @param type PR Type ('e1rm', 'speed', 'set', 'volume')
    * @param lift Lift name
    * @returns PRRecord if new PR, null otherwise
    */
   static checkPR(
     currentVal: number,
     prRecords: PRRecord[],
-    type: '1rm' | 'volume' | 'velocity' | 'power',
+    type: PRType,
     lift: string
   ): PRRecord | null {
     const existingPR = prRecords.find(pr => pr.lift === lift && pr.type === type);
-    
+
     if (!existingPR || currentVal > existingPR.value) {
       const improvement = existingPR ? currentVal - existingPR.value : 0;
       return {

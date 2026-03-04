@@ -43,7 +43,7 @@ const MonitorScreen: React.FC<MonitorScreenProps> = ({ navigation }) => {
 
   useEffect(() => {
     if (repData.length > 0) {
-      const vl = VBTCalculations.calculateVelocityLoss(repData);
+      const vl = VBTCalculations.calculateSetVelocityLoss(repData);
       setVelocityLoss(vl);
     }
   }, [repData]);
@@ -161,7 +161,7 @@ const MonitorScreen: React.FC<MonitorScreenProps> = ({ navigation }) => {
 
       {liveData && (
         <View style={styles.velocityDisplay}>
-          <Text style={styles.velocityLabel}>Mean Velocity</Text>
+          <Text style={styles.velocityLabel}>平均速度</Text>
           <Text
             style={[
               styles.velocityValue,
@@ -171,15 +171,15 @@ const MonitorScreen: React.FC<MonitorScreenProps> = ({ navigation }) => {
             {liveData.mean_velocity.toFixed(2)} m/s
           </Text>
           <Text style={styles.peakLabel}>
-            Peak Velocity: {liveData.peak_velocity.toFixed(2)} m/s
+            ピーク速度: {liveData.peak_velocity.toFixed(2)} m/s
           </Text>
           <View style={styles.subStats}>
             <View style={styles.subStatItem}>
-              <Text style={styles.subStatLabel}>ROM</Text>
+              <Text style={styles.subStatLabel}>可動域</Text>
               <Text style={styles.subStatValue}>{liveData.rom_cm.toFixed(1)} cm</Text>
             </View>
             <View style={styles.subStatItem}>
-              <Text style={styles.subStatLabel}>Power</Text>
+              <Text style={styles.subStatLabel}>パワー</Text>
               <Text style={styles.subStatValue}>{liveData.mean_power_w?.toFixed(0) || '0'} W</Text>
             </View>
           </View>
@@ -188,7 +188,7 @@ const MonitorScreen: React.FC<MonitorScreenProps> = ({ navigation }) => {
 
       {velocityLoss !== null && (
         <View style={styles.vlCard}>
-          <Text style={styles.vlLabel}>Velocity Loss</Text>
+          <Text style={styles.vlLabel}>速度低下</Text>
           <Text
             style={[
               styles.vlValue,
@@ -238,7 +238,7 @@ const MonitorScreen: React.FC<MonitorScreenProps> = ({ navigation }) => {
         ) : (
           repData.map((rep, index) => (
             <View key={index} style={styles.repItem}>
-              <Text style={styles.repNumber}>Rep {index + 1}</Text>
+              <Text style={styles.repNumber}>レップ {index + 1}</Text>
               <Text style={styles.repVelocity}>
                 {rep.mean_velocity?.toFixed(2)} m/s
               </Text>

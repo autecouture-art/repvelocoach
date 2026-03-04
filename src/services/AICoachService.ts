@@ -39,17 +39,33 @@ export class AICoachService {
     }
 
     /**
+     * 種目別の最新VL閾値を取得（2024-2025論文に基づく）
+     */
+    static getVlThresholdByExercise(category: string): number {
+        switch (category?.toLowerCase()) {
+            case 'squat': return 20;
+            case 'bench': return 10;
+            case 'deadlift': return 5;
+            default: return 20; // 補助種目等はデフォルト20%
+        }
+    }
+
+    /**
      * セット履歴をもとにコーチングアドバイスを生成
      * @param setHistory  今セッションの全セット履歴
      * @param currentSet  現在のセット番号
+     * @param exercise    現在の種目
      * @param settings    アプリ設定（閾値など）
      */
     static getCoachingAdvice(
         setHistory: SetData[],
         currentSet: number,
+        exercise?: any,
         settings?: Partial<AppSettings>
     ): CoachingAdvice {
-        const vlThreshold = settings?.velocity_loss_threshold ?? 20;
+        // 最新論文に基づく種目別閾値を優先、設定があればそちらを使用
+        const paperThreshold = this.getVlThresholdByExercise(exercise?.category);
+        const vlThreshold = settings?.velocity_loss_threshold ?? paperThreshold;
 
         // セットが少ない場合
         if (setHistory.length < 2) {
@@ -95,7 +111,7 @@ export class AICoachService {
         // Velocity Loss超過
         if (lastVL > vlThreshold) {
             return {
-                message: `Velocity Lossが${lastVL.toFixed(1)}%に達しました（閾値: ${vlThreshold}%）。`,
+                message: `${exercise?.name || '種目'}のVL閾値(${vlThreshold}%)を超過しました。`,
                 emoji: '🛑',
                 severity: 'warning',
                 suggestedAction: '休憩時間を延ばすか、次のセットの重量を5%下げてみてください。',
@@ -136,28 +152,32 @@ export class AICoachService {
         const targetVel = target.min + 0.1; // ゾーン下限より少し余裕を持つ
 
         if (avgVelocity < target.min) {
-            // 速すぎる → 重量を増やす
+            // 遅すぎる（重量が重すぎる） → 重量を減らす
+            const velocityDiff = target.min - avgVelocity;
+            // 速度差に応じて1〜10%の範囲で減量を提案
+            const percentChange = Math.max(
+                Math.round((velocityDiff / target.min) * -50),
+                -10
+            );
+            const newLoad = Math.round((currentLoad * (1 + percentChange / 100)) / 2.5) * 2.5;
+            return {
+                suggestedLoad: Math.max(newLoad, 0),
+                reason: `現在の速度(${avgVelocity.toFixed(2)} m/s)は${target.name}ゾーンの最小値(${target.min.toFixed(2)} m/s)を下回っています。重量を少し下げて速度を維持しましょう。`,
+                percentChange,
+            };
+        } else if (avgVelocity > targetVel + 0.05) {
+            // 速すぎる（重量が軽すぎる） → 重量を増やす
+            const velocityDiff = avgVelocity - targetVel;
+            // 速度差に応じて1〜10%の範囲で増量を提案
             const percentChange = Math.min(
-                Math.round(((avgVelocity - targetVel) / targetVel) * -50),
+                Math.round((velocityDiff / targetVel) * 50),
                 10
             );
             const newLoad = Math.round((currentLoad * (1 + percentChange / 100)) / 2.5) * 2.5;
             return {
                 suggestedLoad: newLoad,
-                reason: `現在の速度(${avgVelocity.toFixed(2)} m/s)は${target.name}ゾーンより速いです`,
+                reason: `現在の速度(${avgVelocity.toFixed(2)} m/s)は${target.name}ゾーンで非常にスムーズです。出力を高めるために重量を少し増やしてみましょう。`,
                 percentChange,
-            };
-        } else if (avgVelocity > targetVel + 0.15) {
-            // 遅すぎる → 重量を減らす
-            const percentChange = Math.max(
-                Math.round(((avgVelocity - targetVel) / targetVel) * 30),
-                -10
-            );
-            const newLoad = Math.round((currentLoad * (1 - Math.abs(percentChange) / 100)) / 2.5) * 2.5;
-            return {
-                suggestedLoad: Math.max(newLoad, currentLoad * 0.9),
-                reason: `現在の速度(${avgVelocity.toFixed(2)} m/s)は${target.name}ゾーンより遅いです`,
-                percentChange: -Math.abs(percentChange),
             };
         }
 
