@@ -35,49 +35,7 @@ export default function HomeScreen() {
   const isWeb = Platform.OS === 'web';
 
   useEffect(() => {
-    if (!isFocused) {
-      return;
-    }
-
-    let cancelled = false;
-
-    const hydrateDashboard = async () => {
-      await initializeApp();
-      if (cancelled) {
-        return;
-      }
-
-      await loadRecentSessions();
-      if (cancelled) {
-        return;
-      }
-
-      const deviceInfo = BLEService.getLastDeviceInfo();
-      setLastDeviceInfo(deviceInfo);
-      if (!isConnected && deviceInfo.id) {
-        setFoundDevice({ name: deviceInfo.name, id: deviceInfo.id });
-      }
-    };
-
-    void hydrateDashboard();
-
-    return () => {
-      cancelled = true;
-    };
-  }, [isConnected, isFocused, isWeb]);
-
-  const initializeApp = async () => {
-    try {
-      await DatabaseService.initialize();
-
-      if (!isWeb) {
-        const bleInitialized = await BLEService.initialize();
-        if (!bleInitialized) {
-          Alert.alert('BLEエラー', 'Bluetoothをオンにしてください');
-        }
-      }
-
-      BLEService.setCallbacks({
+    BLEService.setCallbacks({
         onConnectionStatusChanged: (connected) => {
           setIsConnected(connected);
           const deviceInfo = BLEService.getLastDeviceInfo();
@@ -100,8 +58,51 @@ export default function HomeScreen() {
           setDiscoveredDevices(devices);
         },
       });
+  }, []);
+
+  useEffect(() => {
+    if (!isFocused) {
+      return;
+    }
+
+    let cancelled = false;
+
+    const hydrateDashboard = async () => {
+      try {
+        await DatabaseService.initialize();
+        if (cancelled) {
+          return;
+        }
+
+        await loadRecentSessions();
+        if (cancelled) {
+          return;
+        }
+
+        const deviceInfo = BLEService.getLastDeviceInfo();
+        setLastDeviceInfo(deviceInfo);
+        if (!isConnected && deviceInfo.id) {
+          setFoundDevice({ name: deviceInfo.name, id: deviceInfo.id });
+        }
+      } catch (error) {
+        console.error('Init error:', error);
+      }
+    };
+
+    void hydrateDashboard();
+
+    return () => {
+      cancelled = true;
+    };
+  }, [isConnected, isFocused]);
+
+  const ensureBleReady = async (): Promise<boolean> => {
+    if (isWeb) return false;
+    try {
+      return await BLEService.initialize();
     } catch (error) {
-      console.error('Init error:', error);
+      console.error('BLE init error:', error);
+      return false;
     }
   };
 
@@ -127,6 +128,12 @@ export default function HomeScreen() {
   };
 
   const handleConnectBLE = async () => {
+    const bleReady = await ensureBleReady();
+    if (!bleReady) {
+      Alert.alert('BLEエラー', 'Bluetoothをオンにしてください');
+      return;
+    }
+
     setIsScanning(true);
     setFoundDevice(null);
     setDiscoveredDevices([]);
@@ -139,6 +146,12 @@ export default function HomeScreen() {
   };
 
   const handleReconnect = async () => {
+    const bleReady = await ensureBleReady();
+    if (!bleReady) {
+      Alert.alert('BLEエラー', 'Bluetoothをオンにしてください');
+      return;
+    }
+
     if (!lastDeviceInfo.id) {
       Alert.alert('エラー', '再接続するデバイスがありません');
       return;

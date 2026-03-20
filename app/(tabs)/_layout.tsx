@@ -1,7 +1,6 @@
 import { Tabs } from "expo-router";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 
-import { HapticTab } from "@/components/haptic-tab";
 import { IconSymbol } from "@/components/ui/icon-symbol";
 import { Platform } from "react-native";
 import { GarageTheme } from "@/src/constants/garageTheme";
@@ -17,7 +16,6 @@ export default function TabLayout() {
         tabBarActiveTintColor: GarageTheme.accent,
         tabBarInactiveTintColor: GarageTheme.textMuted,
         headerShown: false,
-        tabBarButton: HapticTab,
         tabBarStyle: {
           paddingTop: 8,
           paddingBottom: bottomPadding,

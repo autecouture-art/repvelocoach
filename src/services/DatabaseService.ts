@@ -3,7 +3,6 @@
  * Handles all database operations for VBT data
  */
 
-import { Platform } from 'react-native';
 import Constants from 'expo-constants';
 import { VBTLogic } from './VBTLogic';
 import VBTCalculations from '../utils/VBTCalculations';
@@ -18,12 +17,20 @@ import type {
 
 const DB_NAME = 'repvelo.db';
 
-// Try to import expo-sqlite safely
+// Lazy-load expo-sqlite to avoid native module initialization at import time.
 let SQLite: any = null;
-try {
-  SQLite = require('expo-sqlite');
-} catch (e) {
-  console.warn('expo-sqlite not found or failed to load:', e);
+let sqliteLoadAttempted = false;
+
+function getSQLite(): any {
+  if (!sqliteLoadAttempted) {
+    sqliteLoadAttempted = true;
+    try {
+      SQLite = require('expo-sqlite');
+    } catch (e) {
+      console.warn('expo-sqlite not found or failed to load:', e);
+    }
+  }
+  return SQLite;
 }
 
 class DatabaseService {
@@ -49,14 +56,15 @@ class DatabaseService {
       return;
     }
 
-    if (!SQLite) {
+    const sqlite = getSQLite();
+    if (!sqlite) {
       console.warn('SQLite module not available. skipping initialization.');
       return;
     }
 
     this.initializationPromise = (async () => {
       try {
-        this.db = await SQLite.openDatabaseAsync(DB_NAME);
+        this.db = await sqlite.openDatabaseAsync(DB_NAME);
         await this.createTables();
         await this.migrate(); // カラム追加などのマイグレーション
         console.log('Database initialized successfully');

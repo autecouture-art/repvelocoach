@@ -29,9 +29,9 @@ const config: ExpoConfig = {
   userInterfaceStyle: "dark",
   newArchEnabled: true,
   ios: {
-    supportsTablet: true,
+        supportsTablet: true,
     bundleIdentifier: env.iosBundleId,
-    buildNumber: "50",
+    buildNumber: "58",
     infoPlist: {
       ITSAppUsesNonExemptEncryption: false,
       NSBluetoothAlwaysUsageDescription:
@@ -138,7 +138,7 @@ const config: ExpoConfig = {
   ],
   experiments: {
     typedRoutes: true,
-    reactCompiler: true,
+    reactCompiler: false,
   },
   extra: {
     eas: {
