@@ -16,6 +16,7 @@ import DatabaseService from '@/src/services/DatabaseService';
 import { getApiBaseUrl, getResolvedApiHealth, type ApiHealthPayload } from '@/constants/oauth';
 import { useTrainingStore } from '@/src/store/trainingStore';
 import { trpc } from '@/lib/trpc';
+import { getLocalLLMHealth, invokeDirectCoachChat } from '@/src/services/LocalLLMService';
 import { firstRouteParam, numberRouteParam } from '@/src/utils/routeParams';
 import type { SessionData, SetData } from '@/src/types/index';
 
@@ -121,6 +122,15 @@ export default function AICoachChatScreen() {
 
   const checkApiHealth = async () => {
     setApiStatus('checking');
+    const localHealth = await getLocalLLMHealth().catch(() => null);
+    if (localHealth?.hasApiKey) {
+      setResolvedApiBaseUrl(localHealth.apiUrl);
+      setApiHealth(null);
+      setApiStatus('ok');
+      setApiStatusDetail(`ローカル直接接続 / ${localHealth.model} (${localHealth.apiUrl})`);
+      return;
+    }
+
     const { baseUrl, health } = await getResolvedApiHealth(true);
     setResolvedApiBaseUrl(baseUrl);
     setApiHealth(health);
@@ -278,12 +288,23 @@ export default function AICoachChatScreen() {
         role: message.role,
         text: message.text,
       }));
-      const result = await coachChatMutation.mutateAsync({
-        message: msgText,
-        history,
-        context,
-      });
-      addCoachMessage(result.text);
+      const localHealth = await getLocalLLMHealth().catch(() => null);
+
+      if (localHealth?.hasApiKey) {
+        const text = await invokeDirectCoachChat({
+          message: msgText,
+          history,
+          context,
+        });
+        addCoachMessage(text);
+      } else {
+        const result = await coachChatMutation.mutateAsync({
+          message: msgText,
+          history,
+          context,
+        });
+        addCoachMessage(result.text);
+      }
     } catch (error) {
       const fallback = await generateFallback(msgText);
       const reason =
@@ -294,7 +315,7 @@ export default function AICoachChatScreen() {
             : error instanceof Error && error.message.includes('ZAI_API_KEY')
               ? 'ZAI APIキーが未設定です。'
               : error instanceof Error && error.message.includes('fetch')
-                ? `ローカルAPIサーバーに接続できません。現在の接続先: ${resolvedApiBaseUrl}`
+                ? `接続先に到達できません。現在の接続先: ${resolvedApiBaseUrl}`
                 : 'GLM接続に失敗しました。';
       addCoachMessage(`${reason}\n\n${fallback}`);
     } finally {
@@ -343,6 +364,8 @@ export default function AICoachChatScreen() {
               {apiHealth.llm.hasApiKey ? 'LLM key: configured' : 'LLM key: missing'}
               {apiHealth.llm.model ? ` / model: ${apiHealth.llm.model}` : ''}
             </Text>
+          ) : apiStatus === 'ok' && apiStatusDetail.includes('ローカル直接接続') ? (
+            <Text style={styles.apiStatusMeta}>mode: direct / local key configured</Text>
           ) : null}
         </View>
         <TouchableOpacity style={styles.apiRetryButton} onPress={checkApiHealth}>

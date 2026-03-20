@@ -1,5 +1,24 @@
+import fs from "fs";
+import path from "path";
+import dotenv from "dotenv";
+
 const pick = (...values: Array<string | undefined>) =>
   values.find((value) => value && value.trim().length > 0) ?? "";
+
+const nodeEnv = process.env.NODE_ENV || "development";
+const envFiles = [
+  ".env",
+  ".env.local",
+  `.env.${nodeEnv}`,
+  `.env.${nodeEnv}.local`,
+];
+
+for (const file of envFiles) {
+  const filePath = path.resolve(process.cwd(), file);
+  if (fs.existsSync(filePath)) {
+    dotenv.config({ path: filePath, override: true });
+  }
+}
 
 export const ENV = {
   appId: process.env.VITE_APP_ID ?? "",

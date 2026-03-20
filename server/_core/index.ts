@@ -1,4 +1,6 @@
-import "dotenv/config";
+import fs from "fs";
+import path from "path";
+import dotenv from "dotenv";
 import express from "express";
 import { createServer } from "http";
 import net from "net";
@@ -7,6 +9,21 @@ import { registerOAuthRoutes } from "./oauth";
 import { appRouter } from "../routers";
 import { createContext } from "./context";
 import { ENV } from "./env";
+
+const nodeEnv = process.env.NODE_ENV || "development";
+const envFiles = [
+  ".env",
+  ".env.local",
+  `.env.${nodeEnv}`,
+  `.env.${nodeEnv}.local`,
+];
+
+for (const file of envFiles) {
+  const filePath = path.resolve(process.cwd(), file);
+  if (fs.existsSync(filePath)) {
+    dotenv.config({ path: filePath, override: true });
+  }
+}
 
 function isPortAvailable(port: number): Promise<boolean> {
   return new Promise((resolve) => {

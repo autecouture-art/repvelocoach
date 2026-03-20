@@ -212,6 +212,10 @@ const resolveApiBaseUrl = () => {
 
 const resolveApiUrl = () => `${resolveApiBaseUrl()}/chat/completions`;
 
+const isAnthropicCompatibleUrl = () => /\/anthropic(\/|$)/i.test(resolveApiBaseUrl());
+
+const resolveAnthropicApiUrl = () => `${resolveApiBaseUrl()}/v1/messages`;
+
 const assertApiKey = () => {
   if (!ENV.forgeApiKey) {
     throw new Error("ZAI_API_KEY is not configured");
@@ -301,6 +305,111 @@ export async function invokeLLM(params: InvokeParams): Promise<InvokeResult> {
 
   if (normalizedResponseFormat) {
     payload.response_format = normalizedResponseFormat;
+  }
+
+  if (isAnthropicCompatibleUrl()) {
+    if (tools && tools.length > 0) {
+      throw new Error("Anthropic-compatible Z.AI endpoint does not support tools in this app yet");
+    }
+
+    const normalizedMessages = messages.map(normalizeMessage);
+    const systemBlocks = normalizedMessages
+      .filter((message) => message.role === 'system')
+      .map((message) => {
+        const content = message.content;
+        if (typeof content === 'string') {
+          return content;
+        }
+        return Array.isArray(content)
+          ? content
+              .filter((part): part is TextContent => part.type === 'text')
+              .map((part) => part.text)
+              .join("\n")
+          : '';
+      })
+      .filter(Boolean)
+      .join("\n\n");
+
+    const anthropicMessages = normalizedMessages
+      .filter((message) => message.role === 'user' || message.role === 'assistant')
+      .map((message) => ({
+        role: message.role,
+        content:
+          typeof message.content === 'string'
+            ? message.content
+            : Array.isArray(message.content)
+              ? message.content
+                  .filter((part): part is TextContent => part.type === 'text')
+                  .map((part) => ({ type: 'text', text: part.text }))
+              : [],
+      }));
+
+    const anthropicPayload: Record<string, unknown> = {
+      model: model || ENV.zaiModel || 'glm-4.7',
+      max_tokens: 700,
+      messages: anthropicMessages,
+    };
+
+    if (systemBlocks) {
+      anthropicPayload.system = systemBlocks;
+    }
+
+    const response = await fetch(resolveAnthropicApiUrl(), {
+      method: 'POST',
+      headers: {
+        'content-type': 'application/json',
+        'x-api-key': ENV.forgeApiKey,
+        'anthropic-version': '2023-06-01',
+      },
+      body: JSON.stringify(anthropicPayload),
+    });
+
+    if (!response.ok) {
+      const errorText = await response.text();
+      if (response.status === 401 && /invalid|authentication_error|api key/i.test(errorText)) {
+        throw new Error('ZAI_API_KEY is invalid');
+      }
+      if (response.status === 429 && /Insufficient balance|no resource package|recharge/i.test(errorText)) {
+        throw new Error('ZAI_API_BALANCE_EXHAUSTED');
+      }
+      throw new Error(`LLM invoke failed: ${response.status} ${response.statusText} – ${errorText}`);
+    }
+
+    const data = await response.json() as {
+      id: string;
+      model: string;
+      content?: Array<{ type: string; text?: string }>;
+      stop_reason?: string | null;
+      usage?: { input_tokens?: number; output_tokens?: number };
+    };
+
+    const text = (data.content ?? [])
+      .filter((part) => part.type === 'text' && typeof part.text === 'string')
+      .map((part) => part.text)
+      .join('\n');
+
+    return {
+      id: data.id,
+      created: Date.now(),
+      model: data.model || (model || ENV.zaiModel || 'glm-4.7'),
+      choices: [
+        {
+          index: 0,
+          message: {
+            role: 'assistant',
+            content: text,
+          },
+          finish_reason: data.stop_reason ?? null,
+        },
+      ],
+      usage: data.usage
+        ? {
+            prompt_tokens: data.usage.input_tokens ?? 0,
+            completion_tokens: data.usage.output_tokens ?? 0,
+            total_tokens: (data.usage.input_tokens ?? 0) + (data.usage.output_tokens ?? 0),
+          }
+        : undefined,
+    };
   }
 
   const response = await fetch(resolveApiUrl(), {

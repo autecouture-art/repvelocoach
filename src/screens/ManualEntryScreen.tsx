@@ -238,6 +238,17 @@ const ManualEntryScreen: React.FC<ManualEntryScreenProps> = ({ navigation }) => 
       </View>
 
       <View style={styles.form}>
+        <Text style={styles.label}>種目</Text>
+        <TouchableOpacity style={styles.exerciseSelectorCard} onPress={() => setShowExerciseModal(true)}>
+          <View>
+            <Text style={styles.exerciseSelectorName}>{lift}</Text>
+            <Text style={styles.exerciseSelectorMeta}>
+              {selectedExercise ? getExerciseCategoryLabel(selectedExercise.category) : '種目を選択してください'}
+            </Text>
+          </View>
+          <Text style={styles.exerciseSelectorAction}>変更</Text>
+        </TouchableOpacity>
+
         <TouchableOpacity style={styles.coachButton} onPress={handleAskCoach}>
           <Text style={styles.coachButtonText}>AIコーチに確認</Text>
           <Text style={styles.coachButtonSubtext}>
@@ -270,17 +281,6 @@ const ManualEntryScreen: React.FC<ManualEntryScreenProps> = ({ navigation }) => 
             ))
           )}
         </View>
-
-        <Text style={styles.label}>種目</Text>
-        <TouchableOpacity style={styles.exerciseSelectorCard} onPress={() => setShowExerciseModal(true)}>
-          <View>
-            <Text style={styles.exerciseSelectorName}>{lift}</Text>
-            <Text style={styles.exerciseSelectorMeta}>
-              {selectedExercise ? getExerciseCategoryLabel(selectedExercise.category) : '種目を選択してください'}
-            </Text>
-          </View>
-          <Text style={styles.exerciseSelectorAction}>変更</Text>
-        </TouchableOpacity>
 
         <Text style={styles.label}>セットタイプ</Text>
         <View style={styles.setTypeContainer}>

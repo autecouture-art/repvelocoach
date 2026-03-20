@@ -220,6 +220,26 @@ export default function GraphScreen() {
         </TouchableOpacity>
       </View>
 
+      {/* 種目選択（LVP/trend タブ） */}
+      {activeTab !== 'zones' && exercisesList.length > 0 && (
+        <View style={styles.exercisePickerSection}>
+          <Text style={styles.exercisePickerLabel}>EXERCISE SELECT</Text>
+          <ScrollView horizontal showsHorizontalScrollIndicator={false} style={styles.exerciseScroll}>
+            {exercisesList.map((ex) => (
+              <TouchableOpacity
+                key={ex.id}
+                style={[styles.exerciseButton, selectedExercise === ex.name && styles.exerciseButtonActive]}
+                onPress={() => setSelectedExercise(ex.name)}
+              >
+                <Text style={[styles.exerciseButtonText, selectedExercise === ex.name && styles.exerciseButtonTextActive]}>
+                  {ex.name}
+                </Text>
+              </TouchableOpacity>
+            ))}
+          </ScrollView>
+        </View>
+      )}
+
       {/* タブ切替 */}
       <View style={styles.tabBar}>
         {(['lvp', 'trend', 'zones'] as TabType[]).map(tab => (
@@ -241,23 +261,6 @@ export default function GraphScreen() {
           <Text style={styles.noDataSubText}>手動入力かセッション記録を作成するとここに表示されます</Text>
         </View>
       ) : null}
-
-      {/* 種目選択（LVP/trend タブ） */}
-      {activeTab !== 'zones' && exercisesList.length > 0 && (
-        <ScrollView horizontal showsHorizontalScrollIndicator={false} style={styles.exerciseScroll}>
-          {exercisesList.map((ex) => (
-            <TouchableOpacity
-              key={ex.id}
-              style={[styles.exerciseButton, selectedExercise === ex.name && styles.exerciseButtonActive]}
-              onPress={() => setSelectedExercise(ex.name)}
-            >
-              <Text style={[styles.exerciseButtonText, selectedExercise === ex.name && styles.exerciseButtonTextActive]}>
-                {ex.name}
-              </Text>
-            </TouchableOpacity>
-          ))}
-        </ScrollView>
-      )}
 
       {loading ? (
         <View style={styles.loadingContainer}>
@@ -337,6 +340,17 @@ const styles = StyleSheet.create({
   title: { fontSize: 22, fontWeight: 'bold', color: GarageTheme.textStrong },
   refreshChip: { paddingHorizontal: 14, paddingVertical: 8, borderRadius: 999, borderWidth: 1, borderColor: GarageTheme.border, backgroundColor: GarageTheme.panel },
   refreshChipText: { color: GarageTheme.textStrong, fontSize: 12, fontWeight: '700' },
+  exercisePickerSection: {
+    paddingHorizontal: 16,
+    paddingTop: 16,
+  },
+  exercisePickerLabel: {
+    color: GarageTheme.accentSoft,
+    fontSize: 11,
+    fontWeight: '800',
+    letterSpacing: 1.5,
+    marginBottom: 10,
+  },
   tabBar: {
     flexDirection: 'row', margin: 16, backgroundColor: GarageTheme.surfaceAlt,
     borderRadius: 10, padding: 4,
@@ -345,7 +359,7 @@ const styles = StyleSheet.create({
   tabActive: { backgroundColor: GarageTheme.accent },
   tabText: { color: GarageTheme.textMuted, fontSize: 14, fontWeight: '600' },
   tabTextActive: { color: GarageTheme.textStrong },
-  exerciseScroll: { paddingHorizontal: 16, marginBottom: 8 },
+  exerciseScroll: { marginBottom: 4 },
   exerciseButton: {
     paddingHorizontal: 16, paddingVertical: 8,
     backgroundColor: GarageTheme.surfaceAlt, borderRadius: 20, marginRight: 8,

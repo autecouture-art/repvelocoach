@@ -310,6 +310,32 @@ export default function SessionScreen() {
         )}
       </View>
 
+      {/* Exercise Selection */}
+      <View style={styles.exerciseCard}>
+        <Text style={styles.exerciseLabel}>Exercise</Text>
+        {currentExercise ? (
+          <TouchableOpacity
+            style={styles.exerciseSelector}
+            onPress={() => setShowExerciseModal(true)}
+          >
+            <View style={styles.exerciseInfo}>
+              <Text style={styles.exerciseName}>{currentExercise.name}</Text>
+              <Text style={styles.exerciseCategory}>
+                {getExerciseCategoryLabel(currentExercise.category)}
+              </Text>
+            </View>
+            <Text style={styles.exerciseChange}>Change</Text>
+          </TouchableOpacity>
+        ) : (
+          <TouchableOpacity
+            style={styles.exerciseSelectButton}
+            onPress={() => setShowExerciseModal(true)}
+          >
+            <Text style={styles.exerciseSelectButtonText}>Select Exercise</Text>
+          </TouchableOpacity>
+        )}
+      </View>
+
       {/* セッション開始バナー */}
       {!isSessionActive ? (
         <View style={styles.sessionStartBanner}>
@@ -431,32 +457,6 @@ export default function SessionScreen() {
           </TouchableOpacity>
         </View>
       )}
-
-      {/* Exercise Selection */}
-      <View style={styles.exerciseCard}>
-        <Text style={styles.exerciseLabel}>Exercise</Text>
-        {currentExercise ? (
-          <TouchableOpacity
-            style={styles.exerciseSelector}
-            onPress={() => setShowExerciseModal(true)}
-          >
-            <View style={styles.exerciseInfo}>
-              <Text style={styles.exerciseName}>{currentExercise.name}</Text>
-              <Text style={styles.exerciseCategory}>
-                {getExerciseCategoryLabel(currentExercise.category)}
-              </Text>
-            </View>
-            <Text style={styles.exerciseChange}>Change</Text>
-          </TouchableOpacity>
-        ) : (
-          <TouchableOpacity
-            style={styles.exerciseSelectButton}
-            onPress={() => setShowExerciseModal(true)}
-          >
-            <Text style={styles.exerciseSelectButtonText}>Select Exercise</Text>
-          </TouchableOpacity>
-        )}
-      </View>
 
       {/* Target Weight Input (Big 3 Only) */}
       {isBig3(currentExercise?.category) && isSessionActive && (
@@ -1238,6 +1238,5 @@ const styles = StyleSheet.create({
   setHR: { fontSize: 13, color: GarageTheme.danger, marginTop: 2, fontWeight: 'bold' },
   setZoneTag: { fontSize: 11, fontWeight: '800', borderWidth: 1, borderRadius: 999, paddingHorizontal: 8, paddingVertical: 3, overflow: 'hidden' },
 });
-
 
 
