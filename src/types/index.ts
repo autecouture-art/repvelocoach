@@ -1,15 +1,16 @@
 /**
- * OVR VBT Coach Type Definitions
+ * RepVelo VBT Coach Type Definitions
  */
 
 // ========================================
 // Core VBT Types
 // ========================================
 
-export type DeviceType = 'VBT' | 'manual';
+export type DeviceType = 'VBT' | 'manual' | 'OVR Velocity';
 export type SetType = 'normal' | 'amrap' | 'drop' | 'superset_A' | 'superset_B';
 
 export interface RepData {
+  id?: string; // Unique identifier for the rep (UUID)
   session_id: string;
   lift: string;
   set_index: number;
@@ -19,12 +20,19 @@ export interface RepData {
   mean_velocity: number | null;
   peak_velocity: number | null;
   rom_cm: number | null;
+  mean_power_w: number | null;
   rep_duration_ms: number | null;
   is_valid_rep: boolean;
+  is_short_rom?: boolean;
   rpe_set?: number;
   set_type: SetType;
   notes?: string;
+  hr_bpm?: number; // 心拍数 (bpm)
   timestamp: string;
+  is_excluded?: boolean;
+  exclusion_reason?: string;
+  edited_at?: number;
+  is_failed?: boolean;
 }
 
 export interface SetData {
@@ -38,8 +46,13 @@ export interface SetData {
   avg_velocity: number | null;
   velocity_loss: number | null;
   rpe?: number;
-  e1rm?: number;
-  timestamp: string;
+  e1rm?: number | null;
+  timestamp: string; // 完了時間
+  start_timestamp?: string; // セット開始時間
+  end_timestamp?: string; // セット完了時間
+  rest_duration_s?: number; // 前のセットからの休憩時間
+  avg_hr?: number; // 平均心拍数
+  peak_hr?: number; // 最大心拍数
   notes?: string;
 }
 
@@ -48,8 +61,12 @@ export interface SessionData {
   date: string;
   total_volume: number;
   total_sets: number;
-  lifts: string[];
+  lifts?: string[]; // Optional: not stored in DB schema, derived from sets when needed
   duration_minutes?: number;
+  duration_seconds?: number; // 詳細な経過時間
+  start_timestamp?: string; // セッション開始時間
+  end_timestamp?: string; // セッション終了時間
+  avg_hr?: number; // 平均心拍数
   notes?: string;
 }
 
@@ -61,10 +78,12 @@ export interface LVPData {
   lift: string;
   vmax: number; // Maximum velocity at lightest load
   v1rm: number; // Velocity at 1RM
+  mvt?: number; // Minimum Velocity Threshold (1RM velocity specific to lift)
   slope: number; // LVP slope
   intercept: number; // LVP intercept
   r_squared: number; // Model fit quality
   last_updated: string;
+  sample_count?: number;
 }
 
 export interface VelocityZone {
@@ -86,12 +105,20 @@ export interface BLEDeviceInfo {
   isConnected: boolean;
 }
 
-export interface OVRData {
+export interface RepVeloData {
   mean_velocity: number;
   peak_velocity: number;
   rom_cm: number;
   rep_duration_ms: number;
+  mean_power_w?: number;   // 平均パワー (W)
+  peak_power_w?: number;   // ピークパワー (W)
   timestamp: number;
+  // Raw data for debugging
+  raw_peak_v?: number;
+  raw_mean_v?: number;
+  raw_rom?: number;
+  raw_mean_p?: number;
+  raw_peak_p?: number;
 }
 
 // ========================================
@@ -101,18 +128,47 @@ export interface OVRData {
 export interface Exercise {
   id: string;
   name: string;
-  category: 'squat' | 'bench' | 'deadlift' | 'press' | 'pull' | 'accessory';
+  category:
+    | 'squat'
+    | 'bench'
+    | 'deadlift'
+    | 'press'
+    | 'pull'
+    | 'row'
+    | 'vertical_pull'
+    | 'single_leg'
+    | 'quad'
+    | 'hamstring'
+    | 'adductor'
+    | 'glute'
+    | 'triceps'
+    | 'biceps'
+    | 'core'
+    | 'accessory';
+  subcategory?: string;
   has_lvp: boolean;
   machine_weight_steps?: number[];
+  min_rom_threshold?: number; // 最小ROM (cm) - デフォルト 10
+  rep_detection_mode?: 'standard' | 'tempo' | 'pause' | 'short_rom';
+  target_pause_ms?: number; // 目標静止時間 (ms)
+  rom_range_min_cm?: number;
+  rom_range_max_cm?: number;
+  rom_data_points?: number;
+  description?: string;
+  mvt?: number; // Minimum Velocity Threshold (e.g., 0.15 for bench, 0.3 for squat)
 }
 
 export interface TrainingSession {
+  session_id: string;  // DBとの整合性のためのセッションID
   id: string;
   date: string;
   exercises: Exercise[];
   sets: SetData[];
   total_volume: number;
   readiness_score?: number;
+  start_timestamp?: string;
+  end_timestamp?: string;
+  avg_hr?: number;
   notes?: string;
 }
 
@@ -120,7 +176,7 @@ export interface TrainingSession {
 // PR (Personal Record) Types
 // ========================================
 
-export type PRType = 'e1rm' | 'speed' | 'set' | 'volume';
+export type PRType = 'e1rm' | 'speed' | 'set' | 'volume' | '1rm' | 'velocity' | 'power';
 
 export interface PRRecord {
   id: string;
@@ -209,6 +265,7 @@ export interface AppSettings {
   enable_voice_commands: boolean;
   enable_video_recording: boolean;
   target_training_phase: 'power' | 'hypertrophy' | 'strength' | 'peaking';
+  audio_volume: number; // 0.0 to 1.0
 }
 
 // ========================================

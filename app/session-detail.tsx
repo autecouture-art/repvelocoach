@@ -44,7 +44,7 @@ export default function SessionDetailScreen() {
   return (
     <ScrollView style={styles.container}>
       <View style={[styles.header, { paddingTop: insets.top + 12 }]}>
-        <TouchableOpacity hitSlop={{ top: 16, bottom: 16, left: 16, right: 16 }} onPress={() => (navigationState.canGoBack() ? router.back() : router.replace('/'))}>
+        <TouchableOpacity hitSlop={{ top: 16, bottom: 16, left: 16, right: 16 }} onPress={() => (navigationState.canGoBack() ? router.back() : router.replace('/(tabs)/history'))}>
           <Text style={styles.backButton}>← 戻る</Text>
         </TouchableOpacity>
         <View style={styles.headerCopy}>

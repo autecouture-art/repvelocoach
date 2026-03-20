@@ -4,6 +4,7 @@
  */
 
 import React, { useEffect, useMemo, useState } from 'react';
+import { useIsFocused } from '@react-navigation/native';
 import {
   View,
   Text,
@@ -16,6 +17,7 @@ import DatabaseService from '../services/DatabaseService';
 import { SessionData, SetData } from '../types/index';
 import { format, parseISO } from 'date-fns';
 import { formatSessionLabel } from '../utils/session';
+import { GarageTheme } from '../constants/garageTheme';
 
 interface HistoryScreenProps {
   navigation: any;
@@ -31,10 +33,13 @@ type HistorySession = SessionData & {
 const HistoryScreen: React.FC<HistoryScreenProps> = ({ navigation }) => {
   const [sessions, setSessions] = useState<HistorySession[]>([]);
   const [refreshing, setRefreshing] = useState(false);
+  const isFocused = useIsFocused();
 
   useEffect(() => {
-    void loadSessions();
-  }, []);
+    if (isFocused) {
+      void loadSessions();
+    }
+  }, [isFocused]);
 
   const enrichSession = async (session: SessionData): Promise<HistorySession> => {
     const sets = await DatabaseService.getSetsForSession(session.session_id);
@@ -129,16 +134,17 @@ const HistoryScreen: React.FC<HistoryScreenProps> = ({ navigation }) => {
     <ScrollView
       style={styles.container}
       refreshControl={
-        <RefreshControl refreshing={refreshing} onRefresh={handleRefresh} tintColor="#2196F3" />
+        <RefreshControl refreshing={refreshing} onRefresh={handleRefresh} tintColor={GarageTheme.accent} />
       }
     >
       <View style={styles.header}>
         <View>
-          <Text style={styles.title}>トレーニング履歴</Text>
-          <Text style={styles.subtitle}>セッション詳細と AI 振り返りをここから確認</Text>
+          <Text style={styles.eyebrow}>RUN LOG / HISTORY</Text>
+          <Text style={styles.title}>セッション履歴</Text>
+          <Text style={styles.subtitle}>セッション詳細とコーチ分析をここから確認</Text>
         </View>
         <TouchableOpacity style={styles.headerCoachButton} onPress={handleHistoryCoachPress}>
-          <Text style={styles.headerCoachButtonText}>AI要約</Text>
+          <Text style={styles.headerCoachButtonText}>SUMMARY</Text>
         </TouchableOpacity>
       </View>
 
@@ -195,12 +201,12 @@ const HistoryScreen: React.FC<HistoryScreenProps> = ({ navigation }) => {
                 ) : null}
 
                 <View style={styles.cardActions}>
-                  <Text style={styles.detailLink}>詳細を見る →</Text>
+                  <Text style={styles.detailLink}>DETAIL</Text>
                   <TouchableOpacity
                     style={styles.sessionCoachButton}
                     onPress={() => handleSessionCoachPress(session)}
                   >
-                    <Text style={styles.sessionCoachButtonText}>AIコーチ</Text>
+                    <Text style={styles.sessionCoachButtonText}>COACH</Text>
                   </TouchableOpacity>
                 </View>
               </TouchableOpacity>
@@ -211,7 +217,7 @@ const HistoryScreen: React.FC<HistoryScreenProps> = ({ navigation }) => {
 
       {sessions.length > 0 ? (
         <View style={styles.summaryCard}>
-          <Text style={styles.summaryTitle}>統計</Text>
+          <Text style={styles.summaryTitle}>TELEMETRY SUMMARY</Text>
           <View style={styles.summaryStats}>
             <View style={styles.summaryItem}>
               <Text style={styles.summaryValue}>{sessions.length}</Text>
@@ -241,37 +247,46 @@ const HistoryScreen: React.FC<HistoryScreenProps> = ({ navigation }) => {
 const styles = StyleSheet.create({
   container: {
     flex: 1,
-    backgroundColor: '#1a1a1a',
+    backgroundColor: GarageTheme.background,
   },
   header: {
     padding: 16,
     borderBottomWidth: 1,
-    borderBottomColor: '#333',
+    borderBottomColor: GarageTheme.border,
     flexDirection: 'row',
     justifyContent: 'space-between',
     alignItems: 'center',
     gap: 12,
   },
+  eyebrow: {
+    fontSize: 10,
+    fontWeight: '800',
+    color: GarageTheme.accent,
+    letterSpacing: 2,
+    marginBottom: 8,
+  },
   title: {
-    fontSize: 24,
-    fontWeight: 'bold',
-    color: '#fff',
+    fontSize: 28,
+    fontWeight: '800',
+    color: GarageTheme.textStrong,
+    letterSpacing: 0.4,
   },
   subtitle: {
     fontSize: 12,
-    color: '#8d8d8d',
-    marginTop: 4,
+    color: GarageTheme.textMuted,
+    marginTop: 6,
+    lineHeight: 18,
   },
   headerCoachButton: {
     paddingHorizontal: 12,
     paddingVertical: 10,
     borderRadius: 999,
-    backgroundColor: '#1f1512',
+    backgroundColor: GarageTheme.panel,
     borderWidth: 1,
-    borderColor: '#ff6a2a',
+    borderColor: GarageTheme.borderStrong,
   },
   headerCoachButtonText: {
-    color: '#ffb347',
+    color: GarageTheme.accentSoft,
     fontSize: 12,
     fontWeight: '700',
   },
@@ -281,34 +296,37 @@ const styles = StyleSheet.create({
   },
   emptyText: {
     fontSize: 16,
-    color: '#999',
+    color: GarageTheme.textMuted,
     textAlign: 'center',
     marginBottom: 8,
   },
   emptySubtext: {
     fontSize: 14,
-    color: '#666',
+    color: GarageTheme.textSubtle,
     textAlign: 'center',
   },
   monthGroup: {
     marginTop: 8,
   },
   monthHeader: {
-    fontSize: 14,
-    fontWeight: '600',
-    color: '#2196F3',
+    fontSize: 11,
+    fontWeight: '800',
+    color: GarageTheme.accent,
     paddingHorizontal: 16,
     paddingVertical: 12,
-    backgroundColor: '#2a2a2a',
+    backgroundColor: GarageTheme.surfaceAlt,
+    letterSpacing: 1.8,
   },
   sessionCard: {
-    backgroundColor: '#2a2a2a',
+    backgroundColor: GarageTheme.surface,
     marginHorizontal: 16,
     marginTop: 8,
     padding: 16,
-    borderRadius: 12,
+    borderRadius: 16,
+    borderWidth: 1,
+    borderColor: GarageTheme.border,
     borderLeftWidth: 4,
-    borderLeftColor: '#4CAF50',
+    borderLeftColor: GarageTheme.accent,
   },
   sessionHeader: {
     flexDirection: 'row',
@@ -319,14 +337,14 @@ const styles = StyleSheet.create({
   sessionDate: {
     fontSize: 16,
     fontWeight: '600',
-    color: '#fff',
+    color: GarageTheme.textStrong,
   },
   sessionDuration: {
     fontSize: 12,
-    color: '#999',
+    color: GarageTheme.textMuted,
   },
   liftText: {
-    color: '#f1eee9',
+    color: GarageTheme.textStrong,
     fontSize: 14,
     fontWeight: '600',
     marginBottom: 10,
@@ -342,16 +360,16 @@ const styles = StyleSheet.create({
   statValue: {
     fontSize: 20,
     fontWeight: 'bold',
-    color: '#2196F3',
+    color: GarageTheme.accent,
     marginBottom: 4,
   },
   statLabel: {
     fontSize: 12,
-    color: '#999',
+    color: GarageTheme.textMuted,
   },
   sessionNotes: {
     fontSize: 12,
-    color: '#999',
+    color: GarageTheme.textMuted,
     fontStyle: 'italic',
     marginTop: 8,
   },
@@ -363,33 +381,36 @@ const styles = StyleSheet.create({
     gap: 12,
   },
   detailLink: {
-    fontSize: 13,
-    color: '#9ad0ff',
-    fontWeight: '600',
+    fontSize: 12,
+    color: GarageTheme.info,
+    fontWeight: '700',
+    letterSpacing: 1,
   },
   sessionCoachButton: {
     paddingHorizontal: 12,
     paddingVertical: 8,
     borderRadius: 999,
-    backgroundColor: '#1a1311',
+    backgroundColor: GarageTheme.surface,
     borderWidth: 1,
-    borderColor: '#ff6a2a',
+    borderColor: GarageTheme.borderStrong,
   },
   sessionCoachButtonText: {
-    color: '#ffb347',
+    color: GarageTheme.accentSoft,
     fontSize: 12,
     fontWeight: '700',
   },
   summaryCard: {
     margin: 16,
     padding: 20,
-    backgroundColor: '#2a2a2a',
-    borderRadius: 12,
+    backgroundColor: GarageTheme.surface,
+    borderRadius: 16,
+    borderWidth: 1,
+    borderColor: GarageTheme.borderStrong,
   },
   summaryTitle: {
     fontSize: 18,
     fontWeight: 'bold',
-    color: '#fff',
+    color: GarageTheme.textStrong,
     marginBottom: 16,
     textAlign: 'center',
   },
@@ -404,12 +425,12 @@ const styles = StyleSheet.create({
   summaryValue: {
     fontSize: 24,
     fontWeight: 'bold',
-    color: '#4CAF50',
+    color: GarageTheme.success,
     marginBottom: 4,
   },
   summaryLabel: {
     fontSize: 12,
-    color: '#999',
+    color: GarageTheme.textMuted,
     textAlign: 'center',
   },
 });

@@ -296,7 +296,7 @@ export default function AICoachChatScreen() {
               : error instanceof Error && error.message.includes('fetch')
                 ? `ローカルAPIサーバーに接続できません。現在の接続先: ${resolvedApiBaseUrl}`
                 : 'GLM接続に失敗しました。';
-      addCoachMessage(`⚠️ ${reason}\n\n${fallback}`);
+      addCoachMessage(`${reason}\n\n${fallback}`);
     } finally {
       setLoading(false);
     }

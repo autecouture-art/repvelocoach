@@ -16,14 +16,15 @@ import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import BLEService from '../services/BLEService';
 import DatabaseService from '../services/DatabaseService';
 import VBTCalculations from '../utils/VBTCalculations';
-import { OVRData, RepData, SetData } from '../types/index';
+import { RepData, RepVeloData, SetData } from '../types/index';
 import { createSessionId, formatSessionLabel } from '../utils/session';
+import { GarageTheme } from '../constants/garageTheme';
 
 interface MonitorScreenProps {
   navigation: any;
 }
 
-const DEFAULT_LIFT = 'Bench Press';
+const DEFAULT_LIFT = 'ベンチプレス';
 const DEFAULT_LOAD = 80;
 
 const MonitorScreen: React.FC<MonitorScreenProps> = ({ navigation }) => {
@@ -31,7 +32,7 @@ const MonitorScreen: React.FC<MonitorScreenProps> = ({ navigation }) => {
   const [sessionId] = useState(() => createSessionId());
   const [currentSet, setCurrentSet] = useState(1);
   const [currentRep, setCurrentRep] = useState(0);
-  const [liveData, setLiveData] = useState<OVRData | null>(null);
+  const [liveData, setLiveData] = useState<RepVeloData | null>(null);
   const [repData, setRepData] = useState<RepData[]>([]);
   const [velocityLoss, setVelocityLoss] = useState<number | null>(null);
   const [isRecording, setIsRecording] = useState(false);
@@ -51,22 +52,22 @@ const MonitorScreen: React.FC<MonitorScreenProps> = ({ navigation }) => {
     }
   }, [repData]);
 
-  useEffect(() => {
-    const loadRecentLiftSets = async () => {
-      try {
-        const sets = await DatabaseService.getRecentSetsForLift(DEFAULT_LIFT, 3, sessionId);
-        setRecentLiftSets(sets);
-      } catch {
-        setRecentLiftSets([]);
-      }
-    };
+  const loadRecentLiftSets = async () => {
+    try {
+      const sets = await DatabaseService.getRecentSetsForLift(DEFAULT_LIFT, 3, sessionId);
+      setRecentLiftSets(sets);
+    } catch {
+      setRecentLiftSets([]);
+    }
+  };
 
+  useEffect(() => {
     void loadRecentLiftSets();
   }, [sessionId]);
 
   const setupBLECallbacks = () => {
     BLEService.setCallbacks({
-      onDataReceived: (data: OVRData) => {
+      onDataReceived: (data: RepVeloData) => {
         setLiveData(data);
 
         if (isRecording) {
@@ -79,7 +80,7 @@ const MonitorScreen: React.FC<MonitorScreenProps> = ({ navigation }) => {
     });
   };
 
-  const handleNewRep = (data: OVRData) => {
+  const handleNewRep = (data: RepVeloData) => {
     const newRep: RepData = {
       session_id: sessionId,
       lift: DEFAULT_LIFT,
@@ -90,6 +91,7 @@ const MonitorScreen: React.FC<MonitorScreenProps> = ({ navigation }) => {
       mean_velocity: data.mean_velocity,
       peak_velocity: data.peak_velocity,
       rom_cm: data.rom_cm,
+      mean_power_w: data.mean_power_w ?? null,
       rep_duration_ms: data.rep_duration_ms,
       is_valid_rep: true,
       set_type: 'normal',
@@ -157,6 +159,7 @@ const MonitorScreen: React.FC<MonitorScreenProps> = ({ navigation }) => {
       }
 
       await DatabaseService.syncSessionSummary(sessionId);
+      await loadRecentLiftSets();
 
       Alert.alert('成功', `セット ${currentSet} を保存しました`);
 
@@ -200,11 +203,11 @@ const MonitorScreen: React.FC<MonitorScreenProps> = ({ navigation }) => {
   };
 
   const getVelocityColor = (velocity: number | null): string => {
-    if (!velocity) return '#999';
-    if (velocity >= 1.0) return '#FFD700';
-    if (velocity >= 0.75) return '#FF8C00';
-    if (velocity >= 0.5) return '#32CD32';
-    return '#DC143C';
+    if (!velocity) return GarageTheme.textMuted;
+    if (velocity >= 1.0) return GarageTheme.accentSoft;
+    if (velocity >= 0.75) return GarageTheme.accent;
+    if (velocity >= 0.5) return GarageTheme.success;
+    return GarageTheme.danger;
   };
 
   return (
@@ -273,7 +276,7 @@ const MonitorScreen: React.FC<MonitorScreenProps> = ({ navigation }) => {
           <Text
             style={[
               styles.vlValue,
-              { color: velocityLoss > 20 ? '#F44336' : '#4CAF50' },
+              { color: velocityLoss > 20 ? GarageTheme.danger : GarageTheme.success },
             ]}
           >
             {velocityLoss.toFixed(1)}%
@@ -339,7 +342,7 @@ const MonitorScreen: React.FC<MonitorScreenProps> = ({ navigation }) => {
 const styles = StyleSheet.create({
   container: {
     flex: 1,
-    backgroundColor: '#1a1a1a',
+    backgroundColor: GarageTheme.background,
   },
   header: {
     paddingHorizontal: 16,
@@ -347,21 +350,21 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     alignItems: 'center',
     borderBottomWidth: 1,
-    borderBottomColor: '#333',
+    borderBottomColor: GarageTheme.border,
     gap: 16,
   },
   backButton: {
-    color: '#2196F3',
+    color: GarageTheme.accent,
     fontSize: 16,
   },
   title: {
     fontSize: 24,
     fontWeight: 'bold',
-    color: '#fff',
+    color: GarageTheme.textStrong,
   },
   subtitle: {
     fontSize: 13,
-    color: '#999',
+    color: GarageTheme.textMuted,
     marginTop: 4,
   },
   recentCard: {
@@ -369,18 +372,18 @@ const styles = StyleSheet.create({
     marginTop: 16,
     padding: 14,
     borderRadius: 12,
-    backgroundColor: '#151515',
+    backgroundColor: GarageTheme.surface,
     borderWidth: 1,
-    borderColor: '#2f2f2f',
+    borderColor: GarageTheme.border,
   },
   recentTitle: {
-    color: '#f3f3f3',
+    color: GarageTheme.textStrong,
     fontSize: 15,
     fontWeight: '700',
     marginBottom: 10,
   },
   recentEmpty: {
-    color: '#8a8a8a',
+    color: GarageTheme.textMuted,
     fontSize: 13,
   },
   recentItem: {
@@ -389,16 +392,16 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     paddingVertical: 8,
     borderTopWidth: 1,
-    borderTopColor: '#232323',
+    borderTopColor: GarageTheme.border,
     gap: 12,
   },
   recentItemDate: {
-    color: '#9ad0ff',
+    color: GarageTheme.info,
     fontSize: 12,
     marginBottom: 3,
   },
   recentItemMain: {
-    color: '#fff',
+    color: GarageTheme.textStrong,
     fontSize: 14,
     fontWeight: '600',
   },
@@ -407,12 +410,12 @@ const styles = StyleSheet.create({
     gap: 4,
   },
   recentItemMeta: {
-    color: '#a9d6a1',
+    color: GarageTheme.success,
     fontSize: 12,
     fontWeight: '700',
   },
   recentItemHint: {
-    color: '#ffb347',
+    color: GarageTheme.accentSoft,
     fontSize: 11,
     fontWeight: '700',
   },
@@ -421,30 +424,30 @@ const styles = StyleSheet.create({
     padding: 16,
     flexDirection: 'row',
     justifyContent: 'space-around',
-    backgroundColor: '#2a2a2a',
+    backgroundColor: GarageTheme.surfaceAlt,
     margin: 16,
     borderRadius: 12,
   },
   setLabel: {
     fontSize: 18,
     fontWeight: '600',
-    color: '#fff',
+    color: GarageTheme.textStrong,
   },
   repLabel: {
     fontSize: 18,
     fontWeight: '600',
-    color: '#999',
+    color: GarageTheme.textMuted,
   },
   velocityDisplay: {
     padding: 24,
     alignItems: 'center',
-    backgroundColor: '#2a2a2a',
+    backgroundColor: GarageTheme.surfaceAlt,
     margin: 16,
     borderRadius: 12,
   },
   velocityLabel: {
     fontSize: 16,
-    color: '#999',
+    color: GarageTheme.textMuted,
     marginBottom: 8,
   },
   velocityValue: {
@@ -454,18 +457,18 @@ const styles = StyleSheet.create({
   },
   peakLabel: {
     fontSize: 14,
-    color: '#999',
+    color: GarageTheme.textMuted,
   },
   vlCard: {
     padding: 16,
-    backgroundColor: '#2a2a2a',
+    backgroundColor: GarageTheme.surfaceAlt,
     marginHorizontal: 16,
     borderRadius: 12,
     alignItems: 'center',
   },
   vlLabel: {
     fontSize: 16,
-    color: '#999',
+    color: GarageTheme.textMuted,
     marginBottom: 8,
   },
   vlValue: {
@@ -475,7 +478,7 @@ const styles = StyleSheet.create({
   },
   vlWarning: {
     fontSize: 14,
-    color: '#F44336',
+    color: GarageTheme.danger,
     textAlign: 'center',
   },
   buttonContainer: {
@@ -488,19 +491,19 @@ const styles = StyleSheet.create({
     marginBottom: 12,
   },
   coachButton: {
-    backgroundColor: '#ff5a1f',
+    backgroundColor: GarageTheme.accent,
   },
   startButton: {
-    backgroundColor: '#4CAF50',
+    backgroundColor: GarageTheme.success,
   },
   stopButton: {
-    backgroundColor: '#F44336',
+    backgroundColor: GarageTheme.danger,
   },
   finishButton: {
-    backgroundColor: '#2196F3',
+    backgroundColor: GarageTheme.accent,
   },
   buttonText: {
-    color: '#fff',
+    color: GarageTheme.textStrong,
     fontSize: 18,
     fontWeight: '600',
   },
@@ -510,12 +513,12 @@ const styles = StyleSheet.create({
   repListTitle: {
     fontSize: 18,
     fontWeight: 'bold',
-    color: '#fff',
+    color: GarageTheme.textStrong,
     marginBottom: 12,
   },
   emptyText: {
     fontSize: 14,
-    color: '#999',
+    color: GarageTheme.textMuted,
     textAlign: 'center',
     paddingVertical: 24,
   },
@@ -523,18 +526,18 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     justifyContent: 'space-between',
     padding: 12,
-    backgroundColor: '#2a2a2a',
+    backgroundColor: GarageTheme.surfaceAlt,
     borderRadius: 8,
     marginBottom: 8,
   },
   repNumber: {
     fontSize: 16,
-    color: '#fff',
+    color: GarageTheme.textStrong,
   },
   repVelocity: {
     fontSize: 16,
     fontWeight: '600',
-    color: '#4CAF50',
+    color: GarageTheme.success,
   },
 });
 

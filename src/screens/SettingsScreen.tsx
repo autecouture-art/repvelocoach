@@ -29,6 +29,7 @@ const defaultSettings: AppSettings = {
   enable_voice_commands: false,
   enable_video_recording: false,
   target_training_phase: 'hypertrophy',
+  audio_volume: 1.0,
 };
 
 const SettingsScreen: React.FC<SettingsScreenProps> = ({ navigation }) => {

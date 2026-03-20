@@ -15,8 +15,12 @@ import {
 } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import DatabaseService from '../services/DatabaseService';
+import ExerciseService from '../services/ExerciseService';
 import VBTCalculations from '../utils/VBTCalculations';
-import { SetData, RepData, SetType } from '../types/index';
+import { ExerciseSelectModal } from '../components/ExerciseSelectModal';
+import { getExerciseCategoryLabel } from '../constants/exerciseCatalog';
+import { GarageTheme } from '../constants/garageTheme';
+import { SetData, RepData, SetType, Exercise } from '../types/index';
 import { createSessionId, formatSessionLabel } from '../utils/session';
 
 interface ManualEntryScreenProps {
@@ -26,7 +30,7 @@ interface ManualEntryScreenProps {
 const ManualEntryScreen: React.FC<ManualEntryScreenProps> = ({ navigation }) => {
   const insets = useSafeAreaInsets();
   const [sessionId] = useState(() => createSessionId());
-  const [lift, setLift] = useState('Bench Press');
+  const [lift, setLift] = useState('ベンチプレス');
   const [setIndex, setSetIndex] = useState(1);
   const [loadKg, setLoadKg] = useState('');
   const [reps, setReps] = useState('');
@@ -35,16 +39,8 @@ const ManualEntryScreen: React.FC<ManualEntryScreenProps> = ({ navigation }) => 
   const [notes, setNotes] = useState('');
   const [savedSets, setSavedSets] = useState<SetData[]>([]);
   const [recentLiftSets, setRecentLiftSets] = useState<SetData[]>([]);
-
-  const exercises = [
-    'Bench Press',
-    'Squat',
-    'Deadlift',
-    'Overhead Press',
-    'Barbell Row',
-    'Pull-up',
-    'Dip',
-  ];
+  const [selectedExercise, setSelectedExercise] = useState<Exercise | null>(null);
+  const [showExerciseModal, setShowExerciseModal] = useState(false);
 
   const setTypes: { value: SetType; label: string }[] = [
     { value: 'normal', label: '通常' },
@@ -66,18 +62,37 @@ const ManualEntryScreen: React.FC<ManualEntryScreenProps> = ({ navigation }) => 
     };
   }, [savedSets]);
 
+  const loadRecentLiftSets = async () => {
+    try {
+      const sets = await DatabaseService.getRecentSetsForLift(lift, 3, sessionId);
+      setRecentLiftSets(sets);
+    } catch {
+      setRecentLiftSets([]);
+    }
+  };
+
   useEffect(() => {
-    const loadRecentLiftSets = async () => {
-      try {
-        const sets = await DatabaseService.getRecentSetsForLift(lift, 3, sessionId);
-        setRecentLiftSets(sets);
-      } catch {
-        setRecentLiftSets([]);
+    void loadRecentLiftSets();
+  }, [lift, sessionId]);
+
+  useEffect(() => {
+    let cancelled = false;
+
+    const loadDefaultExercise = async () => {
+      const exercises = await ExerciseService.getAllExercises();
+      const match = exercises.find((exercise) => exercise.name === lift) ?? exercises[0] ?? null;
+      if (!cancelled && match) {
+        setLift(match.name);
+        setSelectedExercise(match);
       }
     };
 
-    void loadRecentLiftSets();
-  }, [lift, sessionId]);
+    void loadDefaultExercise();
+
+    return () => {
+      cancelled = true;
+    };
+  }, []);
 
   const handleAskCoach = () => {
     navigation.navigate('CoachChat', {
@@ -168,6 +183,7 @@ const ManualEntryScreen: React.FC<ManualEntryScreenProps> = ({ navigation }) => 
           mean_velocity: null,
           peak_velocity: null,
           rom_cm: null,
+          mean_power_w: null,
           rep_duration_ms: null,
           is_valid_rep: true,
           rpe_set: rpeValue,
@@ -178,6 +194,8 @@ const ManualEntryScreen: React.FC<ManualEntryScreenProps> = ({ navigation }) => 
       }
 
       await DatabaseService.syncSessionSummary(sessionId);
+      await ExerciseService.inferRomRangeForLift(lift);
+      await loadRecentLiftSets();
 
       setSavedSets((prev) => [...prev, setData]);
       setLoadKg('');
@@ -254,27 +272,15 @@ const ManualEntryScreen: React.FC<ManualEntryScreenProps> = ({ navigation }) => 
         </View>
 
         <Text style={styles.label}>種目</Text>
-        <View style={styles.exerciseGrid}>
-          {exercises.map((ex) => (
-            <TouchableOpacity
-              key={ex}
-              style={[
-                styles.exerciseButton,
-                lift === ex && styles.exerciseButtonActive,
-              ]}
-              onPress={() => setLift(ex)}
-            >
-              <Text
-                style={[
-                  styles.exerciseButtonText,
-                  lift === ex && styles.exerciseButtonTextActive,
-                ]}
-              >
-                {ex}
-              </Text>
-            </TouchableOpacity>
-          ))}
-        </View>
+        <TouchableOpacity style={styles.exerciseSelectorCard} onPress={() => setShowExerciseModal(true)}>
+          <View>
+            <Text style={styles.exerciseSelectorName}>{lift}</Text>
+            <Text style={styles.exerciseSelectorMeta}>
+              {selectedExercise ? getExerciseCategoryLabel(selectedExercise.category) : '種目を選択してください'}
+            </Text>
+          </View>
+          <Text style={styles.exerciseSelectorAction}>変更</Text>
+        </TouchableOpacity>
 
         <Text style={styles.label}>セットタイプ</Text>
         <View style={styles.setTypeContainer}>
@@ -378,6 +384,17 @@ const ManualEntryScreen: React.FC<ManualEntryScreenProps> = ({ navigation }) => 
           </>
         )}
       </View>
+
+      <ExerciseSelectModal
+        visible={showExerciseModal}
+        onClose={() => setShowExerciseModal(false)}
+        onSelect={(exercise) => {
+          setLift(exercise.name);
+          setSelectedExercise(exercise);
+          setShowExerciseModal(false);
+        }}
+        currentExerciseId={selectedExercise?.id}
+      />
     </ScrollView>
   );
 };
@@ -385,7 +402,7 @@ const ManualEntryScreen: React.FC<ManualEntryScreenProps> = ({ navigation }) => 
 const styles = StyleSheet.create({
   container: {
     flex: 1,
-    backgroundColor: '#1a1a1a',
+    backgroundColor: GarageTheme.background,
   },
   header: {
     paddingHorizontal: 16,
@@ -397,18 +414,18 @@ const styles = StyleSheet.create({
     gap: 12,
   },
   backButton: {
-    color: '#2196F3',
+    color: GarageTheme.accent,
     fontSize: 16,
     marginRight: 16,
   },
   title: {
     fontSize: 24,
     fontWeight: 'bold',
-    color: '#fff',
+    color: GarageTheme.textStrong,
   },
   subtitle: {
     fontSize: 13,
-    color: '#999',
+    color: GarageTheme.textMuted,
     marginTop: 2,
   },
   form: {
@@ -489,9 +506,37 @@ const styles = StyleSheet.create({
   label: {
     fontSize: 16,
     fontWeight: '600',
-    color: '#fff',
+    color: GarageTheme.textStrong,
     marginTop: 16,
     marginBottom: 8,
+  },
+  exerciseSelectorCard: {
+    backgroundColor: GarageTheme.surface,
+    borderRadius: 14,
+    borderWidth: 1,
+    borderColor: GarageTheme.borderStrong,
+    paddingHorizontal: 14,
+    paddingVertical: 14,
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    marginBottom: 8,
+  },
+  exerciseSelectorName: {
+    color: GarageTheme.textStrong,
+    fontSize: 16,
+    fontWeight: '800',
+  },
+  exerciseSelectorMeta: {
+    color: GarageTheme.textMuted,
+    fontSize: 12,
+    marginTop: 4,
+  },
+  exerciseSelectorAction: {
+    color: GarageTheme.accentSoft,
+    fontSize: 12,
+    fontWeight: '800',
+    letterSpacing: 1,
   },
   exerciseGrid: {
     flexDirection: 'row',

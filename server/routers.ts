@@ -1,5 +1,6 @@
 import { COOKIE_NAME } from "../shared/const.js";
 import { getSessionCookieOptions } from "./_core/cookies";
+import { ENV } from "./_core/env";
 import { invokeLLM } from "./_core/llm";
 import { systemRouter } from "./_core/systemRouter";
 import { publicProcedure, router } from "./_core/trpc";
@@ -62,7 +63,7 @@ export const appRouter = router({
           : "トレーニングコンテキスト: なし";
 
         const response = await invokeLLM({
-          model: "glm-4.7",
+          model: ENV.zaiModel || "glm-4.7",
           messages: [
             {
               role: "system",

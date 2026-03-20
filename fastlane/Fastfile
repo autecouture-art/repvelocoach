@@ -13,16 +13,25 @@ platform :ios do
       in_house: false
     )
 
+    sigh(
+      app_identifier: 'com.autecouture.repvelocoach.hh',
+      api_key: api_key,
+      team_id: 'NN9FMT4BC9',
+      skip_certificate_verification: true,
+      cert_id: '9XJ8J3X7F8',
+      filename: 'RepVeloCoach_AppStore.mobileprovision'
+    )
+
     build_app(
-      workspace: 'ios/OVRVBTCoach.xcworkspace',
-      scheme: 'OVRVBTCoach',
+      workspace: 'ios/RepVeloCoach.xcworkspace',
+      scheme: 'RepVeloCoach',
       configuration: 'Release',
-      export_method: 'app-store-connect',
+      export_method: 'app-store',
       clean: true,
       output_directory: 'ios/fastlane_export',
       output_name: 'RepVeloCoach.ipa',
       build_path: 'ios/build',
-      archive_path: 'ios/build/OVRVBTCoach.xcarchive',
+      archive_path: 'ios/build/RepVeloCoach.xcarchive',
       export_team_id: 'NN9FMT4BC9',
       xcargs: 'DEVELOPMENT_TEAM=NN9FMT4BC9 CODE_SIGN_STYLE=Automatic -allowProvisioningUpdates',
       export_xcargs: '-allowProvisioningUpdates',

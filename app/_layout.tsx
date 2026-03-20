@@ -17,6 +17,8 @@ import {
 import type { EdgeInsets, Metrics, Rect } from "react-native-safe-area-context";
 
 import { trpc, createTRPCClient } from "@/lib/trpc";
+import { hydrateApiBaseUrlOverride } from "@/constants/oauth";
+import ExerciseService from "@/src/services/ExerciseService";
 import { initManusRuntime, subscribeSafeAreaInsets } from "@/lib/_core/manus-runtime";
 
 const DEFAULT_WEB_INSETS: EdgeInsets = { top: 0, right: 0, bottom: 0, left: 0 };
@@ -32,10 +34,26 @@ export default function RootLayout() {
 
   const [insets, setInsets] = useState<EdgeInsets>(initialInsets);
   const [frame, setFrame] = useState<Rect>(initialFrame);
+  const [runtimeReady, setRuntimeReady] = useState(false);
 
-  // Initialize Manus runtime for cookie injection from parent container
+  // Initialize runtime data before creating API clients
   useEffect(() => {
-    initManusRuntime();
+    let cancelled = false;
+
+    const boot = async () => {
+      initManusRuntime();
+      await hydrateApiBaseUrlOverride();
+      await ExerciseService.initialize();
+      if (!cancelled) {
+        setRuntimeReady(true);
+      }
+    };
+
+    void boot();
+
+    return () => {
+      cancelled = true;
+    };
   }, []);
 
   const handleSafeAreaUpdate = useCallback((metrics: Metrics) => {
@@ -63,7 +81,7 @@ export default function RootLayout() {
         },
       }),
   );
-  const [trpcClient] = useState(() => createTRPCClient());
+  const trpcClient = useMemo(() => (runtimeReady ? createTRPCClient() : null), [runtimeReady]);
 
   // Ensure minimum 8px padding for top and bottom on mobile
   const providerInitialMetrics = useMemo(() => {
@@ -77,6 +95,10 @@ export default function RootLayout() {
       },
     };
   }, [initialInsets, initialFrame]);
+
+  if (!runtimeReady || !trpcClient) {
+    return null;
+  }
 
   const content = (
     <GestureHandlerRootView style={{ flex: 1 }}>

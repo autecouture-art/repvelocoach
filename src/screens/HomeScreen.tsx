@@ -69,7 +69,7 @@ const HomeScreen: React.FC<HomeScreenProps> = ({ navigation }) => {
   return (
     <ScrollView style={styles.container}>
       <View style={styles.header}>
-        <Text style={styles.title}>OVR VBT Coach</Text>
+        <Text style={styles.title}>RepVelo VBT Coach</Text>
         <Text style={styles.subtitle}>Velocity-Based Training</Text>
       </View>
 

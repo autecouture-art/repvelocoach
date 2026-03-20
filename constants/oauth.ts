@@ -1,10 +1,9 @@
+import AsyncStorage from "@react-native-async-storage/async-storage";
 import * as Linking from "expo-linking";
 import Constants from "expo-constants";
 import * as ReactNative from "react-native";
 
-const bundleId = "space.manus.ovr.vbt.coach.app.t20260125053732";
-const timestamp = bundleId.split(".").pop()?.replace(/^t/, "") ?? "";
-const schemeFromBundleId = `manus${timestamp}`;
+const schemeFromBundleId = process.env.EXPO_PUBLIC_APP_SCHEME ?? "repvelocoachrepvelocoach";
 
 const env = {
   portal: process.env.EXPO_PUBLIC_OAUTH_PORTAL_URL ?? "",
@@ -38,8 +37,11 @@ export type ApiHealthPayload = {
   };
 };
 
+export const API_BASE_URL_OVERRIDE_KEY = "@repvelo_api_base_url_override";
+
 let resolvedApiBaseUrlCache = "";
 let resolveApiBaseUrlPromise: Promise<string> | null = null;
+let storedApiBaseUrlOverrideCache = "";
 
 const isLoopbackUrl = (url: string) => {
   try {
@@ -58,6 +60,59 @@ const extractHost = (candidate: string) =>
 
 const withPorts = (protocol: string, host: string, ports: number[]) =>
   ports.map((port) => `${protocol}://${host}:${port}`);
+
+const expandCandidateRange = (baseUrl: string): string[] => {
+  const normalized = trimTrailingSlash(baseUrl);
+  try {
+    const parsed = new URL(normalized);
+    if (parsed.port) {
+      const basePort = parseInt(parsed.port, 10);
+      if (Number.isFinite(basePort)) {
+        return withPorts(parsed.protocol.replace(":", ""), parsed.hostname, [
+          basePort,
+          basePort + 1,
+          basePort + 2,
+          basePort + 3,
+        ]);
+      }
+    }
+  } catch {
+    return [normalized];
+  }
+
+  return [normalized];
+};
+
+export async function hydrateApiBaseUrlOverride(): Promise<string> {
+  try {
+    const stored = await AsyncStorage.getItem(API_BASE_URL_OVERRIDE_KEY);
+    storedApiBaseUrlOverrideCache = trimTrailingSlash(stored ?? "");
+    return storedApiBaseUrlOverrideCache;
+  } catch {
+    storedApiBaseUrlOverrideCache = "";
+    return "";
+  }
+}
+
+export function getStoredApiBaseUrlOverride(): string {
+  return storedApiBaseUrlOverrideCache;
+}
+
+export async function setStoredApiBaseUrlOverride(nextValue: string): Promise<void> {
+  const normalized = trimTrailingSlash(nextValue.trim());
+  storedApiBaseUrlOverrideCache = normalized;
+  resolvedApiBaseUrlCache = "";
+  if (!normalized) {
+    await AsyncStorage.removeItem(API_BASE_URL_OVERRIDE_KEY);
+    return;
+  }
+  await AsyncStorage.setItem(API_BASE_URL_OVERRIDE_KEY, normalized);
+}
+
+const deriveOverrideApiBaseCandidates = (): string[] => {
+  if (!storedApiBaseUrlOverrideCache) return [];
+  return expandCandidateRange(storedApiBaseUrlOverrideCache);
+};
 
 const deriveNativeApiBaseCandidates = (): string[] => {
   const constants = Constants as unknown as {
@@ -116,30 +171,14 @@ const deriveConfiguredApiBaseCandidates = (): string[] => {
     return deriveNativeApiBaseCandidates();
   }
 
-  try {
-    const parsed = new URL(normalized);
-    if (parsed.port) {
-      const basePort = parseInt(parsed.port, 10);
-      if (Number.isFinite(basePort)) {
-        return withPorts(parsed.protocol.replace(":", ""), parsed.hostname, [
-          basePort,
-          basePort + 1,
-          basePort + 2,
-          basePort + 3,
-        ]);
-      }
-    }
-  } catch {
-    return [normalized];
-  }
-
-  return [normalized];
+  return expandCandidateRange(normalized);
 };
 
 export function getApiBaseCandidates(): string[] {
+  const override = deriveOverrideApiBaseCandidates();
   const configured = deriveConfiguredApiBaseCandidates();
-  if (configured.length > 0) {
-    return unique(configured.map(trimTrailingSlash));
+  if (override.length > 0 || configured.length > 0) {
+    return unique([...override, ...configured].map(trimTrailingSlash));
   }
 
   if (ReactNative.Platform.OS === "web") {
@@ -286,6 +325,10 @@ export async function fetchWithApiFallback(
 export function getApiBaseUrl(): string {
   if (resolvedApiBaseUrlCache) {
     return resolvedApiBaseUrlCache;
+  }
+
+  if (storedApiBaseUrlOverrideCache) {
+    return trimTrailingSlash(storedApiBaseUrlOverrideCache);
   }
 
   if (API_BASE_URL) {
