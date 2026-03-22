@@ -16,6 +16,7 @@ import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import BLEService from '@/src/services/BLEService';
 import DatabaseService from '@/src/services/DatabaseService';
 import { GarageTheme } from '@/src/constants/garageTheme';
+import { formatErrorMessage } from '@/src/utils/errorMessages';
 import type { SessionData } from '@/src/types/index';
 import type { Device } from 'react-native-ble-plx';
 
@@ -130,7 +131,8 @@ export default function HomeScreen() {
   const handleConnectBLE = async () => {
     const bleReady = await ensureBleReady();
     if (!bleReady) {
-      Alert.alert('BLEエラー', 'Bluetoothをオンにしてください');
+      const error = formatErrorMessage('BLE_NOT_READY', 'センサー接続');
+      Alert.alert('エラー', error);
       return;
     }
 
@@ -141,14 +143,16 @@ export default function HomeScreen() {
       await BLEService.scanForDevices();
     } catch {
       setIsScanning(false);
-      Alert.alert('BLE接続エラー', 'デバイスのスキャンに失敗しました');
+      const error = formatErrorMessage('BLE_SCAN_FAILED', 'センサー接続');
+      Alert.alert('エラー', error);
     }
   };
 
   const handleReconnect = async () => {
     const bleReady = await ensureBleReady();
     if (!bleReady) {
-      Alert.alert('BLEエラー', 'Bluetoothをオンにしてください');
+      const error = formatErrorMessage('BLE_NOT_READY', 'センサー接続');
+      Alert.alert('エラー', error);
       return;
     }
 
@@ -167,11 +171,13 @@ export default function HomeScreen() {
         setFoundDevice({ name: lastDeviceInfo.name, id: lastDeviceInfo.id });
         Alert.alert('再接続成功', `${lastDeviceInfo.name ?? '前回のデバイス'} に再接続しました`);
       } else {
-        Alert.alert('再接続失敗', 'デバイスが見つかりませんでした。スキャンしてください。');
+        const error = formatErrorMessage('BLE_CONNECTION_FAILED', '再接続');
+        Alert.alert('再接続失敗', error);
       }
     } catch {
       setIsScanning(false);
-      Alert.alert('再接続エラー', '再接続に失敗しました');
+      const error = formatErrorMessage('BLE_CONNECTION_FAILED', '再接続');
+      Alert.alert('エラー', error);
     }
   };
 
@@ -198,9 +204,9 @@ export default function HomeScreen() {
   return (
     <ScrollView style={styles.container} contentContainerStyle={{ paddingTop: insets.top + 10, paddingBottom: 36 }}>
       <View style={styles.hero}>
-        <Text style={styles.eyebrow}>COCKPIT / VBT DASHBOARD</Text>
+        <Text style={styles.eyebrow}>VBTトレーニングコーチ</Text>
         <Text style={styles.title}>RepVelo VBT Coach</Text>
-        <Text style={styles.subtitle}>Race-engineered telemetry for velocity-based training.</Text>
+        <Text style={styles.subtitle}>速度ベースで科学的にトレーニング</Text>
 
         <View style={styles.metricsRow}>
           {statusCards.map((item) => (
@@ -217,7 +223,7 @@ export default function HomeScreen() {
           <View style={styles.panelHeader}>
             <Text style={styles.panelKicker}>LINK STATUS</Text>
             <View style={styles.statusInline}>
-              <Text style={styles.statusTitle}>BLE接続状態</Text>
+              <Text style={styles.statusTitle}>センサー接続</Text>
               <View
                 style={[
                   styles.statusDot,
@@ -279,15 +285,15 @@ export default function HomeScreen() {
       )}
 
       <View style={styles.section}>
-        <Text style={styles.sectionTitle}>CONTROL TRACKS</Text>
+        <Text style={styles.sectionTitle}>トレーニングを始める</Text>
 
         <TouchableOpacity style={[styles.trackCard, styles.trackPrimary]} onPress={() => router.navigate('/(tabs)/session')}>
           <View style={styles.trackHeader}>
             <Text style={styles.trackCode}>TRACK 01</Text>
             <Text style={styles.trackAction}>ENTER</Text>
           </View>
-          <Text style={styles.trackTitle}>VBTセッション開始</Text>
-          <Text style={styles.trackDescription}>ライブ計測でトレーニング進行を開始</Text>
+          <Text style={styles.trackTitle}>センサーを使ってトレーニング</Text>
+          <Text style={styles.trackDescription}>速度を計測しながらトレーニング</Text>
         </TouchableOpacity>
 
         <TouchableOpacity style={[styles.trackCard, styles.trackSecondary]} onPress={() => router.navigate('/(tabs)/manual')}>
@@ -295,8 +301,8 @@ export default function HomeScreen() {
             <Text style={styles.trackCode}>TRACK 02</Text>
             <Text style={styles.trackAction}>EDIT</Text>
           </View>
-          <Text style={styles.trackTitle}>手動入力</Text>
-          <Text style={styles.trackDescription}>セットログを手早く入力</Text>
+          <Text style={styles.trackTitle}>手動で記録する</Text>
+          <Text style={styles.trackDescription}>セットログを入力</Text>
         </TouchableOpacity>
 
         <TouchableOpacity style={[styles.trackCard, styles.trackTertiary]} onPress={() => router.navigate('/(tabs)/graph')}>
@@ -304,8 +310,8 @@ export default function HomeScreen() {
             <Text style={styles.trackCode}>TRACK 03</Text>
             <Text style={styles.trackAction}>VIEW</Text>
           </View>
-          <Text style={styles.trackTitle}>LVPグラフ</Text>
-          <Text style={styles.trackDescription}>LVPと速度トレンドを確認</Text>
+          <Text style={styles.trackTitle}>進捗を見る</Text>
+          <Text style={styles.trackDescription}>グラフとトレンドを確認</Text>
         </TouchableOpacity>
       </View>
 

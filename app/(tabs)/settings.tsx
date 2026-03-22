@@ -30,6 +30,7 @@ import {
 import { GarageTheme } from '@/src/constants/garageTheme';
 import ExerciseService from '@/src/services/ExerciseService';
 import { getLocalLLMHealth, saveLocalLLMConfig } from '@/src/services/LocalLLMService';
+import { HelpButton } from '@/src/components/HelpButton';
 import type { AppSettings, Exercise } from '@/src/types/index';
 
 const SETTINGS_KEY = '@app_settings';
@@ -262,9 +263,14 @@ export default function SettingsTab() {
 
   return (
     <ScrollView style={styles.container} contentContainerStyle={styles.content}>
-      <Text style={styles.eyebrow}>SYSTEM / SETTINGS</Text>
-      <Text style={styles.title}>設定</Text>
-      <Text style={styles.subtitle}>アプリの挙動とAI接続先をここで揃えます。</Text>
+      <View style={styles.headerRow}>
+        <View style={styles.headerText}>
+          <Text style={styles.eyebrow}>SYSTEM / SETTINGS</Text>
+          <Text style={styles.title}>設定</Text>
+          <Text style={styles.subtitle}>アプリの挙動とAI接続先をここで揃えます。</Text>
+        </View>
+        <HelpButton />
+      </View>
 
       <View style={styles.card}>
         <View style={styles.toggleRow}>
@@ -532,6 +538,14 @@ const styles = StyleSheet.create({
     fontSize: 14,
     marginTop: 6,
     marginBottom: 18,
+  },
+  headerRow: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'flex-start',
+  },
+  headerText: {
+    flex: 1,
   },
   card: {
     borderRadius: 18,

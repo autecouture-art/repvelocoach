@@ -28,6 +28,7 @@ import { RepVelocityChart } from '@/src/components/RepVelocityChart';
 import { calculateWarmupSteps, isBig3 } from '@/src/utils/WarmupLogic';
 import { formatLoadKg, getExerciseCategoryLabel, roundToHalfKg } from '@/src/constants/exerciseCatalog';
 import { GarageTheme } from '@/src/constants/garageTheme';
+import { VelocityTooltip, VELOCITY_GLOSSARY } from '@/src/components/VelocityTooltip';
 import type { Exercise, PRRecord } from '@/src/types/index';
 
 export default function SessionScreen() {
@@ -94,6 +95,16 @@ export default function SessionScreen() {
   const [repDetailVisible, setRepDetailVisible] = useState(false);
   const [selectedSetIndex, setSelectedSetIndex] = useState<number>(1);
 
+  // ツールチップの状態
+  const [tooltipVisible, setTooltipVisible] = useState(false);
+  const [tooltipData, setTooltipData] = useState<{
+    term: string;
+    definition: string;
+    targetRange?: string;
+    currentStatus?: 'good' | 'warning' | 'danger';
+    currentValue?: string;
+  } | null>(null);
+
   // Fetch all reps on mount or when returning
   const [sessionAllReps, setSessionAllReps] = useState<any[]>([]);
 
@@ -129,6 +140,35 @@ export default function SessionScreen() {
   const openRepDetail = (setIndex: number) => {
     setSelectedSetIndex(setIndex);
     setRepDetailVisible(true);
+  };
+
+  const showTooltip = (type: 'MEAN_VELOCITY' | 'PEAK_VELOCITY' | 'VELOCITY_LOSS' | 'ROM', currentValue?: number) => {
+    const glossary = VELOCITY_GLOSSARY[type];
+    let currentStatus: 'good' | 'warning' | 'danger' | undefined;
+    let currentValueStr: string | undefined;
+
+    if (currentValue !== undefined) {
+      currentValueStr = `${currentValue.toFixed(2)} ${type === 'VELOCITY_LOSS' ? '%' : 'm/s'}`;
+
+      if (type === 'MEAN_VELOCITY' || type === 'PEAK_VELOCITY') {
+        if (currentValue >= 1.0) currentStatus = 'good';
+        else if (currentValue >= 0.75) currentStatus = 'warning';
+        else currentStatus = 'danger';
+      } else if (type === 'VELOCITY_LOSS') {
+        if (currentValue <= 20) currentStatus = 'good';
+        else if (currentValue <= 30) currentStatus = 'warning';
+        else currentStatus = 'danger';
+      }
+    }
+
+    setTooltipData({
+      term: glossary.term,
+      definition: glossary.definition,
+      targetRange: glossary.targetRange,
+      currentStatus,
+      currentValue: currentValueStr,
+    });
+    setTooltipVisible(true);
   };
 
   const handleLoadChange = (text: string) => {
@@ -555,24 +595,27 @@ export default function SessionScreen() {
                 </View>
               );
             })()}
-            <View style={styles.dataRow}>
+            <TouchableOpacity style={styles.dataRow} onPress={() => showTooltip('MEAN_VELOCITY', liveData.mean_velocity)}>
               <Text style={styles.dataLabel}>Mean Velocity</Text>
               <Text style={[styles.dataValue, {
                 color: AICoachService.getZone(liveData.mean_velocity).color
               }]}>
                 {liveData.mean_velocity.toFixed(2)} m/s
               </Text>
-            </View>
-            <View style={styles.dataRow}>
+              <Text style={styles.helpIcon}>❓</Text>
+            </TouchableOpacity>
+            <TouchableOpacity style={styles.dataRow} onPress={() => showTooltip('PEAK_VELOCITY', liveData.peak_velocity)}>
               <Text style={styles.dataLabel}>Peak Velocity</Text>
               <Text style={styles.dataValue}>
                 {liveData.peak_velocity.toFixed(2)} m/s
               </Text>
-            </View>
-            <View style={styles.dataRow}>
+              <Text style={styles.helpIcon}>❓</Text>
+            </TouchableOpacity>
+            <TouchableOpacity style={styles.dataRow} onPress={() => showTooltip('ROM', liveData.rom_cm)}>
               <Text style={styles.dataLabel}>ROM</Text>
               <Text style={styles.dataValue}>{liveData.rom_cm.toFixed(0)} cm</Text>
-            </View>
+              <Text style={styles.helpIcon}>❓</Text>
+            </TouchableOpacity>
           </>
         ) : (
           <Text style={styles.noDataText}>REP INPUT WAITING</Text>
@@ -687,6 +730,19 @@ export default function SessionScreen() {
         onExcludeRep={handleExclude}
         onMarkFailedRep={handleMarkFailedRep}
       />
+
+      {/* 用語ツールチップ */}
+      {tooltipData && (
+        <VelocityTooltip
+          visible={tooltipVisible}
+          onClose={() => setTooltipVisible(false)}
+          term={tooltipData.term}
+          definition={tooltipData.definition}
+          targetRange={tooltipData.targetRange}
+          currentStatus={tooltipData.currentStatus}
+          currentValue={tooltipData.currentValue}
+        />
+      )}
 
     </ScrollView>
   );
@@ -922,15 +978,28 @@ const styles = StyleSheet.create({
     paddingVertical: 8,
     borderBottomWidth: 1,
     borderBottomColor: GarageTheme.border,
+    alignItems: 'center',
   },
   dataLabel: {
     fontSize: 16,
     color: GarageTheme.textMuted,
+    flex: 1,
   },
   dataValue: {
     fontSize: 20,
     fontWeight: 'bold',
     color: GarageTheme.textStrong,
+  },
+  helpIcon: {
+    fontSize: 14,
+    color: GarageTheme.textSubtle,
+    marginLeft: 8,
+    paddingHorizontal: 6,
+    paddingVertical: 2,
+    backgroundColor: GarageTheme.chip,
+    borderRadius: 10,
+    borderWidth: 1,
+    borderColor: GarageTheme.border,
   },
   noDataText: {
     color: GarageTheme.textSubtle,
