@@ -11,6 +11,7 @@ import {
   TouchableOpacity,
   ScrollView,
   Alert,
+  TextInput,
 } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import BLEService from '../services/BLEService';
@@ -26,9 +27,31 @@ interface MonitorScreenProps {
 const DEFAULT_LIFT = 'Bench Press';
 const DEFAULT_LOAD = 80;
 
+const exercises = [
+  'Bench Press',
+  'Squat',
+  'Deadlift',
+  'Overhead Press',
+  'Barbell Row',
+  'Pull-up',
+  'Dip',
+];
+
+const exercisePresets: Record<string, number[]> = {
+  'Bench Press': [40, 60, 80, 100, 120, 140],
+  'Squat': [60, 80, 100, 120, 140, 160, 180, 200],
+  'Deadlift': [60, 80, 100, 120, 140, 160, 180, 200, 220],
+  'Overhead Press': [20, 30, 40, 50, 60, 70, 80],
+  'Barbell Row': [40, 50, 60, 70, 80, 90, 100],
+  'Pull-up': [0, 10, 20, 30, 40],
+  'Dip': [0, 10, 20, 30, 40],
+};
+
 const MonitorScreen: React.FC<MonitorScreenProps> = ({ navigation }) => {
   const insets = useSafeAreaInsets();
   const [sessionId] = useState(() => createSessionId());
+  const [selectedExercise, setSelectedExercise] = useState(DEFAULT_LIFT);
+  const [loadKg, setLoadKg] = useState(DEFAULT_LOAD);
   const [currentSet, setCurrentSet] = useState(1);
   const [currentRep, setCurrentRep] = useState(0);
   const [liveData, setLiveData] = useState<OVRData | null>(null);
@@ -36,6 +59,8 @@ const MonitorScreen: React.FC<MonitorScreenProps> = ({ navigation }) => {
   const [velocityLoss, setVelocityLoss] = useState<number | null>(null);
   const [isRecording, setIsRecording] = useState(false);
   const [recentLiftSets, setRecentLiftSets] = useState<SetData[]>([]);
+
+  const currentPresets = exercisePresets[selectedExercise] || exercisePresets['Bench Press'];
 
   useEffect(() => {
     setupBLECallbacks();
@@ -54,7 +79,7 @@ const MonitorScreen: React.FC<MonitorScreenProps> = ({ navigation }) => {
   useEffect(() => {
     const loadRecentLiftSets = async () => {
       try {
-        const sets = await DatabaseService.getRecentSetsForLift(DEFAULT_LIFT, 3, sessionId);
+        const sets = await DatabaseService.getRecentSetsForLift(selectedExercise, 3, sessionId);
         setRecentLiftSets(sets);
       } catch {
         setRecentLiftSets([]);
@@ -62,7 +87,7 @@ const MonitorScreen: React.FC<MonitorScreenProps> = ({ navigation }) => {
     };
 
     void loadRecentLiftSets();
-  }, [sessionId]);
+  }, [sessionId, selectedExercise]);
 
   const setupBLECallbacks = () => {
     BLEService.setCallbacks({
@@ -82,10 +107,10 @@ const MonitorScreen: React.FC<MonitorScreenProps> = ({ navigation }) => {
   const handleNewRep = (data: OVRData) => {
     const newRep: RepData = {
       session_id: sessionId,
-      lift: DEFAULT_LIFT,
+      lift: selectedExercise,
       set_index: currentSet,
       rep_index: currentRep + 1,
-      load_kg: DEFAULT_LOAD,
+      load_kg: loadKg,
       device_type: 'VBT',
       mean_velocity: data.mean_velocity,
       peak_velocity: data.peak_velocity,
@@ -136,9 +161,9 @@ const MonitorScreen: React.FC<MonitorScreenProps> = ({ navigation }) => {
 
       const setData: SetData = {
         session_id: sessionId,
-        lift: DEFAULT_LIFT,
+        lift: selectedExercise,
         set_index: currentSet,
-        load_kg: DEFAULT_LOAD,
+        load_kg: loadKg,
         reps: repData.length,
         device_type: 'VBT',
         set_type: 'normal',
@@ -175,10 +200,10 @@ const MonitorScreen: React.FC<MonitorScreenProps> = ({ navigation }) => {
       source: 'monitor',
       message: velocityLoss !== null ? '次のセットの推奨を教えて' : 'このセットを評価して',
       sessionId,
-      currentExercise: DEFAULT_LIFT,
+      currentExercise: selectedExercise,
       currentSet,
       reps: currentRep,
-      loadKg: DEFAULT_LOAD,
+      loadKg: loadKg,
       velocityLoss: velocityLoss !== null ? velocityLoss.toFixed(1) : '',
       meanVelocity: liveData?.mean_velocity?.toFixed(2) ?? '',
       peakVelocity: liveData?.peak_velocity?.toFixed(2) ?? '',
@@ -215,12 +240,88 @@ const MonitorScreen: React.FC<MonitorScreenProps> = ({ navigation }) => {
         </TouchableOpacity>
         <View>
           <Text style={styles.title}>VBT モニター</Text>
-          <Text style={styles.subtitle}>{DEFAULT_LIFT} / {DEFAULT_LOAD} kg</Text>
+          <Text style={styles.subtitle}>{selectedExercise} / {loadKg} kg</Text>
+        </View>
+      </View>
+
+      <View style={styles.formContainer}>
+        <Text style={styles.label}>種目</Text>
+        <View style={styles.exerciseGrid}>
+          {exercises.map((ex) => (
+            <TouchableOpacity
+              key={ex}
+              style={[
+                styles.exerciseButton,
+                selectedExercise === ex && styles.exerciseButtonActive,
+              ]}
+              onPress={() => setSelectedExercise(ex)}
+            >
+              <Text
+                style={[
+                  styles.exerciseButtonText,
+                  selectedExercise === ex && styles.exerciseButtonTextActive,
+                ]}
+              >
+                {ex}
+              </Text>
+            </TouchableOpacity>
+          ))}
+        </View>
+
+        <Text style={styles.label}>負荷 (kg)</Text>
+        <View style={styles.weightInputContainer}>
+          <TouchableOpacity
+            style={styles.adjustButton}
+            onPress={() => {
+              setLoadKg((prev) => Math.max(0, prev - 0.5));
+            }}
+          >
+            <Text style={styles.adjustButtonText}>-</Text>
+          </TouchableOpacity>
+
+          <TextInput
+            style={[styles.input, styles.weightInput]}
+            value={loadKg.toString()}
+            onChangeText={(text) => {
+              const val = parseFloat(text);
+              if (!isNaN(val) && val >= 0) {
+                setLoadKg(val);
+              }
+            }}
+            keyboardType="decimal-pad"
+            placeholder="80.0"
+            placeholderTextColor="#666"
+          />
+
+          <TouchableOpacity
+            style={styles.adjustButton}
+            onPress={() => {
+              setLoadKg((prev) => prev + 0.5);
+            }}
+          >
+            <Text style={styles.adjustButtonText}>+</Text>
+          </TouchableOpacity>
+        </View>
+
+        <Text style={styles.label}>プリセット重量 ({selectedExercise})</Text>
+        <View style={styles.presetContainer}>
+          {currentPresets.map((weight) => (
+            <TouchableOpacity
+              key={weight}
+              style={[
+                styles.presetButton,
+                loadKg === weight && styles.presetButtonActive,
+              ]}
+              onPress={() => setLoadKg(weight)}
+            >
+              <Text style={styles.presetButtonText}>{weight}kg</Text>
+            </TouchableOpacity>
+          ))}
         </View>
       </View>
 
       <View style={styles.recentCard}>
-        <Text style={styles.recentTitle}>前回の {DEFAULT_LIFT}</Text>
+        <Text style={styles.recentTitle}>前回の {selectedExercise}</Text>
         {recentLiftSets.length === 0 ? (
           <Text style={styles.recentEmpty}>比較できる過去セットはまだありません</Text>
         ) : (
@@ -535,6 +636,105 @@ const styles = StyleSheet.create({
     fontSize: 16,
     fontWeight: '600',
     color: '#4CAF50',
+  },
+  formContainer: {
+    paddingHorizontal: 16,
+    paddingTop: 16,
+    paddingBottom: 8,
+    backgroundColor: '#151515',
+    margin: 16,
+    marginTop: 0,
+    borderRadius: 12,
+    borderWidth: 1,
+    borderColor: '#2f2f2f',
+  },
+  label: {
+    fontSize: 16,
+    fontWeight: '600',
+    color: '#fff',
+    marginTop: 16,
+    marginBottom: 8,
+  },
+  exerciseGrid: {
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    marginBottom: 8,
+  },
+  exerciseButton: {
+    backgroundColor: '#2a2a2a',
+    paddingHorizontal: 12,
+    paddingVertical: 8,
+    borderRadius: 8,
+    marginRight: 8,
+    marginBottom: 8,
+  },
+  exerciseButtonActive: {
+    backgroundColor: '#2196F3',
+  },
+  exerciseButtonText: {
+    color: '#999',
+    fontSize: 14,
+  },
+  exerciseButtonTextActive: {
+    color: '#fff',
+    fontWeight: '600',
+  },
+  weightInputContainer: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
+    marginBottom: 8,
+  },
+  adjustButton: {
+    backgroundColor: '#2a2a2a',
+    width: 48,
+    height: 48,
+    borderRadius: 8,
+    alignItems: 'center',
+    justifyContent: 'center',
+    borderWidth: 1,
+    borderColor: '#444',
+  },
+  adjustButtonText: {
+    color: '#fff',
+    fontSize: 20,
+    fontWeight: 'bold',
+  },
+  input: {
+    backgroundColor: '#2a2a2a',
+    color: '#fff',
+    padding: 12,
+    borderRadius: 8,
+    fontSize: 16,
+    borderWidth: 1,
+    borderColor: '#444',
+  },
+  weightInput: {
+    flex: 1,
+    textAlign: 'center',
+  },
+  presetContainer: {
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    gap: 8,
+    marginBottom: 8,
+  },
+  presetButton: {
+    backgroundColor: '#2a2a2a',
+    paddingHorizontal: 16,
+    paddingVertical: 10,
+    borderRadius: 8,
+    borderWidth: 1,
+    borderColor: '#444',
+  },
+  presetButtonActive: {
+    backgroundColor: '#2196F3',
+    borderColor: '#2196F3',
+  },
+  presetButtonText: {
+    color: '#999',
+    fontSize: 14,
+    fontWeight: '600',
   },
 });
 

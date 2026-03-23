@@ -1,0 +1,34 @@
+{
+  "cli": {
+    "version": ">= 5.2.0"
+  },
+  "build": {
+    "development": {
+      "developmentClient": true,
+      "distribution": "internal"
+    },
+    "preview": {
+      "distribution": "internal",
+      "ios": {
+        "buildConfiguration": "Release",
+        "credentialsSource": "remote"
+      }
+    },
+    "production": {
+      "ios": {
+        "buildConfiguration": "Release",
+        "credentialsSource": "remote",
+        "autoIncrement": false
+      }
+    }
+  },
+  "submit": {
+    "production": {
+      "ios": {
+        "appleId": "",
+        "ascAppId": "",
+        "appleTeamId": "NN9FMT4BC9"
+      }
+    }
+  }
+}

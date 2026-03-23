@@ -46,6 +46,18 @@ const ManualEntryScreen: React.FC<ManualEntryScreenProps> = ({ navigation }) => 
     'Dip',
   ];
 
+  const exercisePresets: Record<string, number[]> = {
+    'Bench Press': [40, 60, 80, 100, 120, 140],
+    'Squat': [60, 80, 100, 120, 140, 160, 180, 200],
+    'Deadlift': [60, 80, 100, 120, 140, 160, 180, 200, 220],
+    'Overhead Press': [20, 30, 40, 50, 60, 70, 80],
+    'Barbell Row': [40, 50, 60, 70, 80, 90, 100],
+    'Pull-up': [0, 10, 20, 30, 40],
+    'Dip': [0, 10, 20, 30, 40],
+  };
+
+  const currentPresets = exercisePresets[lift] || exercisePresets['Bench Press'];
+
   const setTypes: { value: SetType; label: string }[] = [
     { value: 'normal', label: '通常' },
     { value: 'amrap', label: 'AMRAP' },
@@ -300,14 +312,54 @@ const ManualEntryScreen: React.FC<ManualEntryScreenProps> = ({ navigation }) => 
         </View>
 
         <Text style={styles.label}>負荷 (kg)</Text>
-        <TextInput
-          style={styles.input}
-          value={loadKg}
-          onChangeText={setLoadKg}
-          keyboardType="decimal-pad"
-          placeholder="80.0"
-          placeholderTextColor="#666"
-        />
+        <View style={styles.weightInputContainer}>
+          <TouchableOpacity
+            style={styles.adjustButton}
+            onPress={() => {
+              const current = parseFloat(loadKg) || 0;
+              const newVal = Math.max(0, current - 0.5);
+              setLoadKg(newVal.toFixed(1));
+            }}
+          >
+            <Text style={styles.adjustButtonText}>-</Text>
+          </TouchableOpacity>
+
+          <TextInput
+            style={[styles.input, styles.weightInput]}
+            value={loadKg}
+            onChangeText={setLoadKg}
+            keyboardType="decimal-pad"
+            placeholder="80.0"
+            placeholderTextColor="#666"
+          />
+
+          <TouchableOpacity
+            style={styles.adjustButton}
+            onPress={() => {
+              const current = parseFloat(loadKg) || 0;
+              const newVal = current + 0.5;
+              setLoadKg(newVal.toFixed(1));
+            }}
+          >
+            <Text style={styles.adjustButtonText}>+</Text>
+          </TouchableOpacity>
+        </View>
+
+        <Text style={styles.label}>プリセット重量 ({lift})</Text>
+        <View style={styles.presetContainer}>
+          {currentPresets.map((weight) => (
+            <TouchableOpacity
+              key={weight}
+              style={[
+                styles.presetButton,
+                loadKg === weight.toString() && styles.presetButtonActive,
+              ]}
+              onPress={() => setLoadKg(weight.toString())}
+            >
+              <Text style={styles.presetButtonText}>{weight}kg</Text>
+            </TouchableOpacity>
+          ))}
+        </View>
 
         <Text style={styles.label}>レップ数</Text>
         <TextInput
@@ -541,6 +593,27 @@ const styles = StyleSheet.create({
     color: '#fff',
     fontWeight: '600',
   },
+  weightInputContainer: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
+    marginBottom: 8,
+  },
+  adjustButton: {
+    backgroundColor: '#2a2a2a',
+    width: 48,
+    height: 48,
+    borderRadius: 8,
+    alignItems: 'center',
+    justifyContent: 'center',
+    borderWidth: 1,
+    borderColor: '#444',
+  },
+  adjustButtonText: {
+    color: '#fff',
+    fontSize: 20,
+    fontWeight: 'bold',
+  },
   input: {
     backgroundColor: '#2a2a2a',
     color: '#fff',
@@ -549,6 +622,33 @@ const styles = StyleSheet.create({
     fontSize: 16,
     borderWidth: 1,
     borderColor: '#444',
+  },
+  weightInput: {
+    flex: 1,
+    textAlign: 'center',
+  },
+  presetContainer: {
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    gap: 8,
+    marginBottom: 8,
+  },
+  presetButton: {
+    backgroundColor: '#2a2a2a',
+    paddingHorizontal: 16,
+    paddingVertical: 10,
+    borderRadius: 8,
+    borderWidth: 1,
+    borderColor: '#444',
+  },
+  presetButtonActive: {
+    backgroundColor: '#2196F3',
+    borderColor: '#2196F3',
+  },
+  presetButtonText: {
+    color: '#999',
+    fontSize: 14,
+    fontWeight: '600',
   },
   textArea: {
     height: 80,

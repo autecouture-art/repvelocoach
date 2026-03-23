@@ -17,8 +17,8 @@ platform :ios do
       workspace: 'ios/OVRVBTCoach.xcworkspace',
       scheme: 'OVRVBTCoach',
       configuration: 'Release',
-      export_method: 'app-store-connect',
-      clean: true,
+      export_method: 'app-store',
+      clean: false,
       output_directory: 'ios/fastlane_export',
       output_name: 'RepVeloCoach.ipa',
       build_path: 'ios/build',
@@ -27,7 +27,12 @@ platform :ios do
       xcargs: 'DEVELOPMENT_TEAM=NN9FMT4BC9 CODE_SIGN_STYLE=Automatic -allowProvisioningUpdates',
       export_xcargs: '-allowProvisioningUpdates',
       export_options: {
-        signingStyle: 'automatic'
+        method: 'app-store',
+        teamID: 'NN9FMT4BC9',
+        signingStyle: 'automatic',
+        uploadBitcode: false,
+        uploadSymbols: true,
+        compileBitcode: false
       }
     )
 
