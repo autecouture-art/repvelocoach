@@ -87,6 +87,7 @@ export default function SettingsTab() {
   const [exerciseGroup, setExerciseGroup] = useState<ExerciseSelectionGroupId>('all');
   const [loadingExerciseMaster, setLoadingExerciseMaster] = useState(false);
   const [syncingExerciseMaster, setSyncingExerciseMaster] = useState(false);
+  const [editingExerciseId, setEditingExerciseId] = useState<string | null>(null);
 
   useEffect(() => {
     void loadSettings();
@@ -214,6 +215,34 @@ export default function SettingsTab() {
     } finally {
       setSyncingExerciseMaster(false);
     }
+  };
+
+  const handleDeleteExercise = async (exerciseId: string, exerciseName: string) => {
+    Alert.alert(
+      '種目を削除',
+      `${exerciseName} を削除しますか？この操作は取り消せません。`,
+      [
+        { text: 'キャンセル', style: 'cancel' },
+        {
+          text: '削除',
+          style: 'destructive',
+          onPress: async () => {
+            try {
+              await ExerciseService.deleteExercise(exerciseId);
+              await loadExerciseMaster();
+              Alert.alert('削除完了', `${exerciseName} を削除しました`);
+            } catch (error) {
+              console.error('Failed to delete exercise:', error);
+              Alert.alert('エラー', '種目の削除に失敗しました');
+            }
+          },
+        },
+      ]
+    );
+  };
+
+  const handleEditExercise = (exerciseId: string) => {
+    setEditingExerciseId(editingExerciseId === exerciseId ? null : exerciseId);
   };
 
   const thresholdOptions = [10, 15, 20, 25, 30];
@@ -431,6 +460,24 @@ export default function SettingsTab() {
           placeholderTextColor={GarageTheme.textSubtle}
         />
 
+        <View style={styles.masterActionsRow}>
+          <TouchableOpacity
+            style={[styles.actionButton, styles.syncButton]}
+            onPress={handleSyncExerciseMaster}
+            disabled={syncingExerciseMaster}
+          >
+            <Text style={styles.actionButtonText}>
+              {syncingExerciseMaster ? '同期中...' : '⟳ 既定に復元'}
+            </Text>
+          </TouchableOpacity>
+          <TouchableOpacity
+            style={[styles.actionButton, styles.addButton]}
+            onPress={() => router.push('/coach-chat')}
+          >
+            <Text style={styles.actionButtonText}>+ 新規追加</Text>
+          </TouchableOpacity>
+        </View>
+
         <ScrollView
           horizontal
           showsHorizontalScrollIndicator={false}
@@ -475,8 +522,10 @@ export default function SettingsTab() {
                           ? `最小ROM ${formatLoadKg(exercise.min_rom_threshold)} cm`
                           : 'ROM未設定';
 
+                    const isEditing = editingExerciseId === exercise.id;
+
                     return (
-                      <View key={exercise.id} style={styles.exerciseRow}>
+                      <View key={exercise.id} style={[styles.exerciseRow, isEditing && styles.exerciseRowEditing]}>
                         <View style={styles.exerciseRowMain}>
                           <View style={styles.exerciseNameRow}>
                             <Text style={styles.exerciseName}>{exercise.name}</Text>
@@ -490,6 +539,20 @@ export default function SettingsTab() {
                             {getExerciseCategoryLabel(exercise.category)} / {MODE_LABELS[exercise.rep_detection_mode ?? 'standard']} / {romText}
                           </Text>
                           {exercise.description ? <Text style={styles.exerciseDescription}>{exercise.description}</Text> : null}
+                        </View>
+                        <View style={styles.exerciseActions}>
+                          <TouchableOpacity
+                            style={styles.exerciseActionBtn}
+                            onPress={() => handleEditExercise(exercise.id)}
+                          >
+                            <Text style={styles.exerciseActionText}>{isEditing ? '×' : '✏️'}</Text>
+                          </TouchableOpacity>
+                          <TouchableOpacity
+                            style={[styles.exerciseActionBtn, styles.exerciseDeleteBtn]}
+                            onPress={() => handleDeleteExercise(exercise.id, exercise.name)}
+                          >
+                            <Text style={styles.exerciseActionText}>🗑️</Text>
+                          </TouchableOpacity>
                         </View>
                       </View>
                     );
@@ -793,6 +856,58 @@ const styles = StyleSheet.create({
     color: GarageTheme.textSubtle,
     fontSize: 12,
     lineHeight: 18,
+  },
+  exerciseRowEditing: {
+    borderColor: GarageTheme.accent,
+    backgroundColor: '#4b2416',
+  },
+  exerciseActions: {
+    flexDirection: 'row',
+    gap: 8,
+    alignItems: 'center',
+  },
+  exerciseActionBtn: {
+    width: 36,
+    height: 36,
+    borderRadius: 8,
+    backgroundColor: GarageTheme.surface,
+    borderWidth: 1,
+    borderColor: GarageTheme.borderStrong,
+    justifyContent: 'center',
+    alignItems: 'center',
+  },
+  exerciseDeleteBtn: {
+    borderColor: '#ff4444',
+    backgroundColor: '#2a1a1a',
+  },
+  exerciseActionText: {
+    fontSize: 16,
+  },
+  masterActionsRow: {
+    flexDirection: 'row',
+    gap: 10,
+    marginTop: 12,
+  },
+  actionButton: {
+    flex: 1,
+    paddingVertical: 14,
+    borderRadius: 12,
+    alignItems: 'center',
+    borderWidth: 1.5,
+  },
+  syncButton: {
+    backgroundColor: '#4b2416',
+    borderColor: GarageTheme.accent,
+  },
+  addButton: {
+    backgroundColor: '#1d3020',
+    borderColor: GarageTheme.success,
+  },
+  actionButtonText: {
+    color: '#fff',
+    fontSize: 14,
+    fontWeight: '800',
+    letterSpacing: 0.5,
   },
   emptyState: {
     borderRadius: 16,
