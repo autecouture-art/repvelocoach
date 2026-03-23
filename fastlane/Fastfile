@@ -18,7 +18,6 @@ platform :ios do
       api_key: api_key,
       team_id: 'NN9FMT4BC9',
       skip_certificate_verification: true,
-      cert_id: '9XJ8J3X7F8',
       filename: 'RepVeloCoach_AppStore.mobileprovision'
     )
 
